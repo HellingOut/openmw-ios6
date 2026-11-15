@@ -1,0 +1,59 @@
+--- a/SDL2-2.0.9/src/video/uikit/SDL_uikitopenglview.m
++++ b/SDL2-2.0.9/src/video/uikit/SDL_uikitopenglview.m
+@@ -284,6 +284,27 @@
+ 
+ - (void)swapBuffers
+ {
++    /* The drawable must match the view's current bounds before presenting.  A
++     * run-time resize can change the view's bounds without a layout pass ever
++     * reaching this class, and presenting a renderbuffer whose size no longer
++     * matches the CAEAGLLayer hangs the iOS 8 PowerVR driver (and SpringBoard
++     * with it). */
++    {
++        const int width  = (int) (self.bounds.size.width * self.contentScaleFactor);
++        const int height = (int) (self.bounds.size.height * self.contentScaleFactor);
++        if (width > 0 && height > 0 && (width != backingWidth || height != backingHeight)) {
++            EAGLContext *prevContext = [EAGLContext currentContext];
++            if (prevContext != context) {
++                [EAGLContext setCurrentContext:context];
++            }
++            [self updateFrame];
++            glBindRenderbuffer(GL_RENDERBUFFER, viewRenderbuffer);
++            if (prevContext != context) {
++                [EAGLContext setCurrentContext:prevContext];
++            }
++        }
++    }
++
+     if (msaaFramebuffer) {
+         const GLenum attachments[] = {GL_COLOR_ATTACHMENT0};
+ 
+@@ -323,6 +344,28 @@
+ {
+     [super layoutSubviews];
+ 
++    if (self.window) {
++        const CGRect target = self.window.bounds;
++        if (target.size.width > 0.0f && target.size.height > 0.0f &&
++            !CGRectEqualToRect(self.frame, target)) {
++            /* UIKit changes our bounds between the portrait and landscape sizes
++             * across a deactivation cycle while leaving the rotation transform
++             * applied, which makes the frame larger than the window and crops
++             * the image.  Keep the frame equal to the window bounds and derive
++             * the bounds through the inverse transform. */
++            const CGAffineTransform inv = CGAffineTransformInvert(self.transform);
++            const CGSize targetSize = target.size;
++            const CGSize base = CGSizeApplyAffineTransform(targetSize, inv);
++            const CGFloat baseW = fabs(base.width);
++            const CGFloat baseH = fabs(base.height);
++
++            if (baseW >= 1.0f && baseH >= 1.0f) {
++                self.bounds = CGRectMake(0.0f, 0.0f, baseW, baseH);
++                self.center = CGPointMake(CGRectGetMidX(target), CGRectGetMidY(target));
++            }
++        }
++    }
++
+     int width  = (int) (self.bounds.size.width * self.contentScaleFactor);
+     int height = (int) (self.bounds.size.height * self.contentScaleFactor);
+ 

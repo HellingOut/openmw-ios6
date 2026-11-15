@@ -224,6 +224,24 @@ InputWrapper::InputWrapper(SDL_Window* window, osg::ref_ptr<osgViewer::Viewer> v
             {
                 int w,h;
                 SDL_GetWindowSize(mSDLWindow, &w, &h);
+#if defined(__IPHONEOS__)
+                {
+                    // On iOS the EAGL drawable is the real render surface; SDL's
+                    // window size is the landscape coordinate space that UIKit
+                    // rotates by transform. Everything that consumes the size
+                    // (graphics context, event queue, window listeners, MyGUI)
+                    // must therefore agree on the drawable size, otherwise the
+                    // presented layer does not match the viewport and the
+                    // PowerVR driver faults.
+                    int drawableW = 0, drawableH = 0;
+                    SDL_GL_GetDrawableSize(mSDLWindow, &drawableW, &drawableH);
+                    if (drawableW > 0 && drawableH > 0)
+                    {
+                        w = drawableW;
+                        h = drawableH;
+                    }
+                }
+#endif
                 int x,y;
                 SDL_GetWindowPosition(mSDLWindow, &x,&y);
                 mViewer->getCamera()->getGraphicsContext()->resized(x,y,w,h);
@@ -232,6 +250,31 @@ InputWrapper::InputWrapper(SDL_Window* window, osg::ref_ptr<osgViewer::Viewer> v
 
                 if (mWindowListener)
                     mWindowListener->windowResized(w, h);
+
+                {
+                    // The OSG camera viewport and projection are otherwise only
+                    // updated through RESIZED events, which can be missed (the
+                    // UIKit backend only posts them from viewDidLayoutSubviews).
+                    // A stale viewport renders the scene into a rectangle that
+                    // no longer matches the drawable.
+                    int drawableW = 0, drawableH = 0;
+                    SDL_GL_GetDrawableSize(mSDLWindow, &drawableW, &drawableH);
+                    if (drawableW <= 0 || drawableH <= 0)
+                    {
+                        drawableW = w;
+                        drawableH = h;
+                    }
+                    if (drawableW > 0 && drawableH > 0 && mViewer.valid())
+                    {
+                        osg::Camera* camera = mViewer->getCamera();
+                        camera->setViewport(0, 0, drawableW, drawableH);
+
+                        double fov = 0.0, aspect = 1.0, zNear = 0.1, zFar = 1000.0;
+                        if (camera->getProjectionMatrixAsPerspective(fov, aspect, zNear, zFar))
+                            camera->setProjectionMatrixAsPerspective(fov, double(drawableW) / double(drawableH),
+                                                                     zNear, zFar);
+                    }
+                }
             }
                 break;
 

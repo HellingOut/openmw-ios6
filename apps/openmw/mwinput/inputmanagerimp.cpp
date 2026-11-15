@@ -1363,10 +1363,13 @@ namespace MWInput
     {
         // Note: this is a side effect of resolution change or window resize.
         // There is no need to track these changes.
+#if !defined(__IPHONEOS__)
+        // Window sizes on iOS are dictated by UIKit, so persisting them here would store a transient layout size.
         Settings::Manager::setInt("resolution x", "Video", x);
         Settings::Manager::setInt("resolution y", "Video", y);
         Settings::Manager::resetPendingChange("resolution x", "Video");
         Settings::Manager::resetPendingChange("resolution y", "Video");
+#endif
 
         mTouchControls->setScreenSize(x, y);
 

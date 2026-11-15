@@ -95,6 +95,44 @@ iOS 8.4.1 installd rejects a top-level folder literally named `resources`.
   renderbuffer ids it did not create, so the SDL/UIKit drawable colour buffer
   can be bound again (see the entry above).
 
+## iOS screen size / rotation stability
+
+After using Notification Center or Control Center, or after switching away
+from and back to the app, the rendered picture could jump or be cropped, touch
+input could go dead on one half of the screen, and in the worst case the whole
+device (SpringBoard) froze.
+
+The root cause is that UIKit can swap the EAGL view's bounds between
+1024x768 and 768x1024 during a resign/activate cycle while leaving the
+90-degree rotation transform in place. `view.frame` then grew beyond
+`UIWindow.bounds` and was clipped. On the engine side, OSG's camera viewport
+only followed SDL `RESIZED` events while MyGUI consumed SDL's window size, so
+the two disagreed. Presenting a drawable whose size no longer matched the
+layer wedged the PowerVR driver; the crash reports showed this as an
+`EXC_BAD_ACCESS` in `IMGSGX554GLDriver`.
+
+The fix has several cooperating parts:
+
+- `SDL_uikitopenglview.m` — `layoutSubviews` keeps `view.frame` equal to
+  `window.bounds`, deriving the view bounds through the inverse of the rotation
+  transform; `swapBuffers` re-creates the drawable when it disagrees with the
+  current view bounds and rebinds it before presenting.
+- `SDL_uikitvideo.m` — `UIKit_ComputeViewFrame` prefers the `UIWindow` bounds
+  over the `UIScreen` bounds, with a fullscreen guard so that only a truly
+  fullscreen window is orientation-swapped.
+- `SDL_uikitviewcontroller.m` — transient layouts (including keyboard
+  avoidance) are no longer reported as window resizes.
+- `SDL_uikitappdelegate.m` — `attemptRotationToDeviceOrientation` runs on
+  activation so that UIKit re-synchronises the layout.
+- `components/sdlutil/sdlinputwrapper.cpp`, `apps/openmw/engine.cpp` and
+  `apps/openmw/mwinput/inputmanagerimp.cpp` — the engine, viewport and UI all
+  use the EAGL drawable size on iOS, the camera viewport and projection are
+  synced on size changes, and SDL is told the app is landscape-only. Window
+  sizes are not persisted as the video resolution on iOS.
+
+These changes are applied by `deps/apply-patches.sh`; see the
+`deps/patches/SDL2-2.0.9-src-video-uikit-*.patch` files.
+
 ## Installing
 
 ```sh

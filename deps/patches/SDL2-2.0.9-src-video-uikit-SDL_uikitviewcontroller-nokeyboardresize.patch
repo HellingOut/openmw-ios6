@@ -1,7 +1,6 @@
 --- a/SDL2-2.0.9/src/video/uikit/SDL_uikitviewcontroller.m
 +++ b/SDL2-2.0.9/src/video/uikit/SDL_uikitviewcontroller.m
-@@ -187,8 +187,17 @@ - (void)viewDidLayoutSubviews
- - (void)viewDidLayoutSubviews
+@@ -190,2 +190,11 @@
  {
 +#if SDL_IPHONE_KEYBOARD
 +    /* The on-screen keyboard must never resize the GL view: while it is up,
@@ -13,13 +12,7 @@
 +    }
 +#endif
      const CGSize size = self.view.bounds.size;
-     int w = (int) size.width;
-     int h = (int) size.height;
- 
-     SDL_SendWindowEvent(window, SDL_WINDOWEVENT_RESIZED, w, h);
- }
-@@ -407,26 +407,8 @@ - (void)updateKeyboard
- - (void)updateKeyboard
+@@ -410,25 +419,7 @@
  {
 -    CGAffineTransform t = self.view.transform;
 -    CGPoint offset = CGPointMake(0.0, 0.0);

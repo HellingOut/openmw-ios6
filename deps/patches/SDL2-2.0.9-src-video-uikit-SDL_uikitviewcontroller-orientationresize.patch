@@ -1,0 +1,14 @@
+--- a/SDL2-2.0.9/src/video/uikit/SDL_uikitviewcontroller.m
++++ b/SDL2-2.0.9/src/video/uikit/SDL_uikitviewcontroller.m
+@@ -198,6 +198,11 @@
+     }
+ #endif
+     const CGSize size = self.view.bounds.size;
++    if (self.view.window && !CGSizeEqualToSize(size, self.view.window.bounds.size)) {
++        /* A transient layout (e.g. the deactivation snapshot) must never be
++         * reported as a window resize. */
++        return;
++    }
+     int w = (int) size.width;
+     int h = (int) size.height;
+ 

@@ -373,6 +373,13 @@ void OMW::Engine::createWindow(Settings::Manager& settings)
     SDL_SetHint(SDL_HINT_VIDEO_MINIMIZE_ON_FOCUS_LOSS,
                 settings.getBool("minimize on focus loss", "Video") ? "1" : "0");
 
+#if defined(__IPHONEOS__)
+    // The bundle's Info.plist allows only the two landscape orientations; tell
+    // SDL so that its UIKit window can keep a landscape frame even while UIKit
+    // lays the window out transiently in portrait after re-activation.
+    SDL_SetHint(SDL_HINT_ORIENTATIONS, "LandscapeLeft LandscapeRight");
+#endif
+
     checkSDLError(SDL_GL_SetAttribute(SDL_GL_RED_SIZE, 8));
     checkSDLError(SDL_GL_SetAttribute(SDL_GL_GREEN_SIZE, 8));
     checkSDLError(SDL_GL_SetAttribute(SDL_GL_BLUE_SIZE, 8));

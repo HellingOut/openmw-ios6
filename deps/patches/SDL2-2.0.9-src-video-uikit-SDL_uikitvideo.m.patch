@@ -1,0 +1,32 @@
+--- a/SDL2-2.0.9/src/video/uikit/SDL_uikitvideo.m
++++ b/SDL2-2.0.9/src/video/uikit/SDL_uikitvideo.m
+@@ -188,6 +188,16 @@
+ {
+     CGRect frame = screen.bounds;
+ 
++    /* Prefer the UIWindow bounds over the UIScreen bounds.  UIScreen.bounds
++     * can report portrait orientation after a background/foreground cycle even
++     * in a landscape-only app, which flipped the GL view and the EAGL drawable
++     * to portrait.  See SDL bugs 3505 and 3465. */
++    SDL_WindowData *data = (__bridge SDL_WindowData *) window->driverdata;
++    if (data != nil && data.uiwindow != nil &&
++        data.uiwindow.bounds.size.width > 0.0f && data.uiwindow.bounds.size.height > 0.0f) {
++        frame = data.uiwindow.bounds;
++    }
++
+ #if !TARGET_OS_TV && (__IPHONE_OS_VERSION_MIN_REQUIRED < __IPHONE_7_0)
+     BOOL hasiOS7 = UIKit_IsSystemVersionAtLeast(7.0);
+ 
+@@ -209,8 +219,11 @@
+     if (UIKit_IsSystemVersionAtLeast(8.0)) {
+         UIInterfaceOrientation orient = [UIApplication sharedApplication].statusBarOrientation;
+         BOOL isLandscape = UIInterfaceOrientationIsLandscape(orient);
++        BOOL fullscreen = CGRectEqualToRect(screen.bounds, frame);
+ 
+-        if (isLandscape != (frame.size.width > frame.size.height)) {
++        /* Only a truly fullscreen window may be orientation-swapped; a window
++         * smaller than the screen (e.g. iPad Split View) must keep its size. */
++        if (fullscreen && (isLandscape != (frame.size.width > frame.size.height))) {
+             float height = frame.size.width;
+             frame.size.width = frame.size.height;
+             frame.size.height = height;

@@ -1,0 +1,16 @@
+--- a/SDL2-2.0.9/src/video/uikit/SDL_uikitappdelegate.m
++++ b/SDL2-2.0.9/src/video/uikit/SDL_uikitappdelegate.m
+@@ -477,6 +477,13 @@
+ - (void)applicationDidBecomeActive:(UIApplication*)application
+ {
+     SDL_OnApplicationDidBecomeActive();
++
++    /* Re-run UIKit's orientation machinery: without this the app keeps the
++     * half-transitioned layout it had while deactivated (cropped picture) until
++     * the user physically rotates the device. */
++    if ([UIViewController respondsToSelector:@selector(attemptRotationToDeviceOrientation)]) {
++        [UIViewController attemptRotationToDeviceOrientation];
++    }
+ }
+ 
+ - (void)sendDropFileForURL:(NSURL *)url
