@@ -53,6 +53,15 @@ namespace MWInput
         b.pressed = false;
         b.fingerId = -1;
         b.widget = nullptr;
+        b.isBack = false;
+
+        // BACK: only visible in GUI mode; sends Escape instead of a controller
+        // event, so the sentinel code is never dispatched.  Top centre keeps it
+        // reachable in a menu while staying clear of both thumb zones (the old
+        // cx = 0.06, cy = 0.10 sat inside the left movement-thumb area, where a
+        // stray touch fired Escape and opened the menu mid-game).
+        b.trigger = false; b.code = -1;           b.cx = 0.50f; b.cy = 0.07f; b.radius = 0.055f; b.label = "BACK";  b.isBack = true; mButtons.push_back(b);
+        b.isBack = false;
 
         b.trigger = true;  b.code = SDL_CONTROLLER_AXIS_TRIGGERRIGHT; b.cx = 0.88f; b.cy = 0.80f; b.radius = 0.085f; b.label = "USE";   mButtons.push_back(b);
         b.trigger = true;  b.code = SDL_CONTROLLER_AXIS_TRIGGERLEFT;  b.cx = 0.72f; b.cy = 0.88f; b.radius = 0.075f; b.label = "JUMP";  mButtons.push_back(b);
@@ -89,6 +98,32 @@ namespace MWInput
     {
         if (!mEnabled)
             return;
+
+        // The BACK button only exists in GUI mode: there it is hit-tested before
+        // the GUI mouse branch, so a touch on it does not also click through to
+        // the widget underneath.  In game mode the loop is skipped entirely (the
+        // INV/MENU buttons already cover that case).  The finger is captured by
+        // the button (pressed/fingerId below), which keeps touchMotion/touchUp
+        // from synthesising a mouse click for it.
+        if (isGuiMode())
+        {
+            for (size_t i = 0; i < mButtons.size(); ++i)
+            {
+                Button& b = mButtons[i];
+                if (!b.isBack)
+                    continue;
+                float dx = x - b.cx;
+                float dy = y - b.cy;
+                if (dx * dx + dy * dy <= b.radius * b.radius)
+                {
+                    b.pressed = true;
+                    b.fingerId = fingerId;
+                    sendEscape();
+                    updateWidgets();
+                    return;
+                }
+            }
+        }
 
         // In GUI mode the first finger acts as a mouse (tap = click, drag = move).
         if (isGuiMode())
@@ -184,7 +219,8 @@ namespace MWInput
             {
                 b.pressed = false;
                 b.fingerId = -1;
-                sendButton(b, false);
+                if (!b.isBack)
+                    sendButton(b, false);
                 updateWidgets();
                 return;
             }
@@ -260,6 +296,20 @@ namespace MWInput
             mInput->buttonPressed(1, evt);
         else
             mInput->buttonReleased(1, evt);
+    }
+
+    void TouchControls::sendEscape()
+    {
+        if (!mInput)
+            return;
+
+        SDL_KeyboardEvent evt;
+        SDL_zero(evt);
+        evt.type = SDL_KEYDOWN;
+        evt.state = SDL_PRESSED;
+        evt.keysym.sym = SDLK_ESCAPE;
+        evt.keysym.scancode = SDL_SCANCODE_ESCAPE;
+        mInput->keyPressed(evt);
     }
 
     void TouchControls::sendAxis(int axis, float value)
@@ -350,17 +400,21 @@ namespace MWInput
         if (!mWidgetsCreated)
             return;
 
+        const bool guiMode = isGuiMode();
+
         for (size_t i = 0; i < mButtons.size(); ++i)
         {
             Button& b = mButtons[i];
-            b.widget->setVisible(mWidgetsVisible);
+            // Only the BACK button survives GUI mode, and only there; every other
+            // button is hidden so that menus get the whole screen.
+            b.widget->setVisible(mWidgetsVisible && (b.isBack ? guiMode : !guiMode));
             b.widget->setAlpha(b.pressed ? 0.85f : 0.5f);
         }
 
         for (int i = 0; i < 2; ++i)
         {
             Joystick& j = mJoysticks[i];
-            bool visible = mWidgetsVisible && j.active;
+            bool visible = mWidgetsVisible && !guiMode && j.active;
             j.base->setVisible(visible);
             j.knob->setVisible(visible);
             if (j.active)
@@ -377,7 +431,9 @@ namespace MWInput
         if (!mWidgetsCreated)
             createWidgets();
 
-        mWidgetsVisible = mEnabled && !isGuiMode();
+        // Visibility is decided per button in updateWidgets(): the BACK button
+        // shows in GUI mode only, everything else in game mode only.
+        mWidgetsVisible = mEnabled;
         updateWidgets();
     }
 }

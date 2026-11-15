@@ -272,6 +272,9 @@ int runApplication(int argc, char *argv[])
     setenv("LIBGL_USEVBO", "0", 0);
     setenv("LIBGL_LOGSHADERERROR", "1", 1);
     setenv("LIBGL_NOBANNER", "1", 1);
+    // Skip glGetError checks on hot paths; a pure speedup for the GL4ES
+    // fixed-function pipeline.
+    setenv("LIBGL_NOERROR", "1", 0);
 
     // Touch is handled by OpenMW's own virtual gamepad (see TouchControls);
     // disable SDL's automatic touch -> mouse synthesis so the first finger does
@@ -317,6 +320,14 @@ int runApplication(int argc, char *argv[])
 
     if (parseOptions(argc, argv, *engine, cfgMgr))
     {
+#if defined(__IPHONEOS__)
+        // debugserver cannot forward command line arguments, so expose the two
+        // benchmark/testing switches through the environment instead:
+        //   OPENMW_SKIP_MENU=1  -> same as --skip-menu
+        //   OPENMW_NEW_GAME=1   -> same as --new-game (only with OPENMW_SKIP_MENU)
+        if (getenv("OPENMW_SKIP_MENU") != nullptr)
+            engine->setSkipMenu(true, getenv("OPENMW_NEW_GAME") != nullptr);
+#endif
         engine->go();
     }
 

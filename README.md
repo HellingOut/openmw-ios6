@@ -94,6 +94,11 @@ iOS 8.4.1 installd rejects a top-level folder literally named `resources`.
 - `deps/patches/gl4es-master-src-gl-framebuffers.c.patch` — gl4es accepts
   renderbuffer ids it did not create, so the SDL/UIKit drawable colour buffer
   can be bound again (see the entry above).
+- `apps/openmw/mwinput/touchcontrols.cpp` — a virtual **BACK** button that sends
+  `Escape` is the only button kept visible while a GUI window is open. Without it
+  menus were a dead end: the touch layer hides every virtual button in GUI mode
+  and turns the first finger into a mouse click, so nothing could close the
+  window again and the port has no physical Escape key.
 
 ## iOS screen size / rotation stability
 
@@ -132,6 +137,151 @@ The fix has several cooperating parts:
 
 These changes are applied by `deps/apply-patches.sh`; see the
 `deps/patches/SDL2-2.0.9-src-video-uikit-*.patch` files.
+
+## Performance / renderer tuning
+
+The iOS build renders through GL4ES (desktop GL 2.x to OpenGL ES 2.0) on top of
+OpenSceneGraph's GL2 profile, because OpenMW 0.46's scene graph and shader
+corpus assume the fixed-function pipeline. The work below was driven by
+on-device measurements on the reference device (iPad 3,6 / A6X, PowerVR
+SGX 554, iOS 8.4.1, armv7 build against the iOS 7.1 SDK).
+
+### Measuring frame rate
+
+`apps/openmw/engine.cpp` logs a `[perf]` line to `openmw.log` every five
+seconds with the achieved frame rate, the average frame time and the current
+EAGL drawable size:
+
+```
+[perf] fps=21.3118 frame_ms=46.9223 drawable=1024x768
+```
+
+Because `debugserver` on iOS 8 refuses extra program arguments, the
+`--skip-menu` / `--new-game` switches cannot be passed on the device. They are
+therefore also accepted from the environment, so a benchmark can jump straight
+into a new game:
+
+```
+ssh mobile@iPadHelling
+OPENMW_SKIP_MENU=1 $HOME/debugserver *:1234 $(find $HOME/Containers/Bundle/Application/ -name "OpenMW.app")/openmw
+```
+
+### Render resolution: `ios render scale`
+
+On iOS the EAGL drawable is the real render surface and SDL creates it at
+`view bounds x contentScaleFactor`, i.e. the full Retina resolution
+(2048x1536 on this device). `[Video] resolution x/y` has no effect there.
+
+`[Video] ios render scale` sets the EAGL view's content scale factor instead:
+
+| value | drawable (iPad 4) | notes |
+|-------|------------------|-------|
+| 2.0 | 2048x1536 | native Retina, the original behaviour |
+| 1.0 | 1024x768 | default; one drawable pixel per UIKit point |
+| 0.5 | 512x384 | only useful when the GPU is the bottleneck |
+
+The scale is applied in `GraphicsWindowSDL2::init()`, while the freshly created
+GLES context is current, because SDL only creates the `CAEAGLLayer`-backed view
+inside `SDL_GL_CreateContext`. Touch input is unaffected: SDL converts touches
+in UIKit points, and the point size does not change.
+
+Measured in-game frame rates (Seyda Neen, new game, five-second averages, armv7
+build on the reference iPad 3,6):
+
+| configuration | fps |
+|---------------|-----|
+| 2048x1536, default settings | 5.0 - 9.0 |
+| 1024x768, default settings | 7.8 - 14.7 |
+| 512x384, default settings | 10.1 - 23.3 |
+| 1024x768, defaults in this tree | 16.2 - 24.7, steady 18.9 - 19.5 |
+
+The menu renders at the vsync limit (56-60 fps) in every configuration.
+
+512x384 is not faster than 1024x768, and dropping the view distance from 4096
+to 3072 (or the terrain LOD factor from 0.7 to 0.5, or the actor processing
+range from 2048 to 1024) does not change the result either: the renderer is
+**CPU bound at 1x**, and the remaining cost is a fixed per-frame amount, not
+the number of visible objects. 30 fps was therefore not reached in gameplay.
+
+### Where the remaining time goes
+
+Sampling the live process with `lldb` while in-game shows the main thread
+idle in `osgViewer::ViewerBase::renderingTraversals()` and the work spread over
+the cull/draw path: `osgUtil::CullVisitor::createOrReuseRenderLeaf`,
+`SceneUtil::LightListCallback::pushLightState` ->
+`SceneUtil::LightManager::getLightListStateSet`, `osg::Texture2D::apply`,
+`MyGUI::RenderItem::renderToTarget`, plus GL4ES entry points. That is one
+thread of OSG cull plus GL4ES translating the desktop-GL state and draw calls
+to GLES2 on a dual-core A6X. Further gains need renderer work (merging draw
+calls / reducing state changes), not more settings.
+
+One measured improvement came out of this: the per-object light-list ->
+`StateSet` cache in `components/sceneutil/lightmanager.hpp` was a
+`std::map<size_t, ...>` keyed by a 64-bit hash, consulted for every object on
+every frame. It is now a `std::unordered_map`, which removes a red-black-tree
+lookup from the cull traversal.
+
+The `[Navigator]` navmesh threads are *not* the bottleneck: they show up in
+profiles during cell streaming, but reducing the Recast voxel density
+(`cell size` 0.2 -> 0.4) does not raise the frame rate, and
+`[Navigator] enable = false` must not be used on this port -- with it the game
+falls back to the title screen and never loads a cell.
+
+### Scene cost defaults lowered for iOS
+
+`files/settings-default.cfg` ships with reduced draw cost for armv7 hardware:
+`[Camera] viewing distance = 4096`, `[Camera] small feature culling pixel
+size = 6.0`, `[Terrain] lod factor = 0.7`, `[Game] actors processing range =
+2048`, `[Water] reflection detail = 0`, `[Water] rtt size = 256`,
+`[General] anisotropy = 1`. `[Cells] target framerate` stays at 60.
+
+Raising `viewing distance` back towards 6656 restores the full view distance at
+roughly half the frame rate. Setting `[Video] ios render scale = 2.0` restores
+native Retina rendering at roughly a third of the frame rate.
+
+### GL4ES flags set by the app
+
+`apps/openmw/main.cpp` sets, before any GL call:
+`LIBGL_USEVBO=0` (the gl4es VBO conversion path crashed the iOS 8 PowerVR
+driver), `LIBGL_NOERROR=1` (skip `glGetError` in hot paths),
+`LIBGL_NOBANNER=1`, and `LIBGL_LOGSHADERERROR=1`.
+
+`LIBGL_RECYCLEFBO=1` must NOT be enabled: combined with the port's framebuffer
+patch it corrupts gl4es' FBO list and crashes in
+`gl4es_glDeleteFramebuffers` during cell loading. `LIBGL_USEVBO=1` was also
+tried and is neutral on this hardware.
+
+## Native GLES2 instead of GL4ES
+
+Not done, and not achievable as a drop-in switch. The investigation is recorded
+here so it does not have to be repeated.
+
+The C++ side is already close to GLES2 clean: there are no immediate-mode calls
+and no matrix queries anywhere in `apps/` or `components/`, only one
+`glEnable(GL_DEPTH_CLAMP)` (`apps/openmw/mwrender/water.cpp:420`, not available
+in GLES2) and seven `glLight*` calls in
+`components/sceneutil/lightmanager.cpp:78-89`.
+
+The real blockers are:
+
+- **The shader corpus.** All ten compilable shaders are `#version 120` with
+  fixed-function built-ins: 1094 lines total, using `gl_LightSource` (17x),
+  `gl_TextureMatrix` (11x), `gl_FrontMaterial` (9x), `gl_NormalMatrix` (9x),
+  `gl_Fog` (9x), `gl_ModelViewMatrixInverse` (7x), `gl_EyePlane*` (4x), plus
+  `gl_ClipVertex` and `shadow2DProj`. None of these exist in GLSL ES 1.00;
+  GL4ES is what translates them today.
+- **The fixed-function state sets.** About 181 `osg::` fixed-function
+  references (roughly 120 of them `osg::Material`, then `Fog`, `LightModel`,
+  `LightSource`, `AlphaFunc`, `TexEnv`, `PolygonMode`, `ClipPlane`). OSG is
+  built with `-DOPENGL_PROFILE=GL2` (`deps/build-osg.sh:7`), which bakes
+  `#define OSG_GL_FIXED_FUNCTION_AVAILABLE` into `deps/include/osg/GL:32`.
+  Rebuilding OSG for GLES2 undefines that macro, and every one of those state
+  sets silently becomes a no-op, so the scene renders unlit.
+
+A native GLES2 port therefore requires rewriting all ~1094 lines of GLSL for
+GLSL ES 1.00 and replacing the fixed-function state sets with a
+material/light uniform layer fed from `components/shader/shadervisitor.cpp`.
+That is a renderer rewrite, not a build flag.
 
 ## Installing
 

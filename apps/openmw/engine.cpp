@@ -749,6 +749,8 @@ void OMW::Engine::go()
     // Start the main rendering loop
     osg::Timer frameTimer;
     double simulationTime = 0.0;
+    double perfAccumTime = 0.0;
+    unsigned int perfAccumFrames = 0;
     while (!mViewer->done() && !mEnvironment.getStateManager()->hasQuitRequest())
     {
         double dt = frameTimer.time_s();
@@ -777,6 +779,19 @@ void OMW::Engine::go()
         }
 
         mEnvironment.limitFrameRate(frameTimer.time_s());
+
+        perfAccumTime += dt;
+        ++perfAccumFrames;
+        if (perfAccumTime >= 5.0)
+        {
+            int drawableW = 0, drawableH = 0;
+            SDL_GL_GetDrawableSize(mWindow, &drawableW, &drawableH);
+            Log(Debug::Info) << "[perf] fps=" << (perfAccumFrames / perfAccumTime)
+                             << " frame_ms=" << (1000.0 * perfAccumTime / perfAccumFrames)
+                             << " drawable=" << drawableW << "x" << drawableH;
+            perfAccumTime = 0.0;
+            perfAccumFrames = 0;
+        }
     }
 
     // Save user settings

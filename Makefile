@@ -32,6 +32,7 @@ APPLICATION_NAME = openmw
 # the iOS port.  Qt-only component directories are excluded.
 openmw_FILES = \
 	$(shell find apps/openmw -name '*.cpp' ! -name 'android_main.cpp') \
+	$(THEOS_PROJECT_DIR)/components/sdlutil/ios_render_scale.mm \
 	$(shell find components -name '*.cpp' \
 		! -name 'gen_iconv.cpp' \
 		! -path '*/tests/*' \

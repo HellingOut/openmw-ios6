@@ -118,6 +118,22 @@ This setting can be configured from a list of valid choices in the Graphics pane
 but cannot be changed during game play
 due to a technical limitation that may be addressed in a future version of OpenMW.
 
+ios render scale
+----------------
+
+:Type:		floating point
+:Range:		0.5 to 2.0
+:Default:	1.0
+
+This setting controls the content scale factor of the EAGL view that SDL creates for the game window
+on iOS. A value of 1.0 renders one drawable pixel per UIKit point, so the iPad 4 renders at 1024x768
+and the image is upscaled to the native 2048x1536 panel. A value of 2.0 uses the full native resolution.
+Lower values render fewer pixels and therefore run faster, at the cost of a softer image.
+
+This setting has no effect on other platforms.
+
+This setting can only be configured by editing the settings configuration file.
+
 vsync
 -----
 

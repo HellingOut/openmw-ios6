@@ -1,7 +1,9 @@
 #ifndef OPENMW_COMPONENTS_SCENEUTIL_LIGHTMANAGER_H
 #define OPENMW_COMPONENTS_SCENEUTIL_LIGHTMANAGER_H
 
+#include <map>
 #include <set>
+#include <unordered_map>
 
 #include <osg/Light>
 
@@ -137,7 +139,7 @@ namespace SceneUtil
         std::map<osg::observer_ptr<osg::Camera>, LightSourceViewBoundCollection> mLightsInViewSpace;
 
         // < Light list hash , StateSet >
-        typedef std::map<size_t, osg::ref_ptr<osg::StateSet> > LightStateSetMap;
+        typedef std::unordered_map<size_t, osg::ref_ptr<osg::StateSet> > LightStateSetMap;
         LightStateSetMap mStateSetCache[2];
 
         std::vector<osg::ref_ptr<osg::StateAttribute>> mDummies;

@@ -26,7 +26,9 @@ namespace MWInput
     /// no binding changes are required.
     ///
     /// In GUI mode the first finger is translated into mouse events instead, so
-    /// that menus remain usable (tap = click, drag = move).
+    /// that menus remain usable (tap = click, drag = move).  A dedicated BACK
+    /// button stays visible in every mode and sends Escape, so a window can
+    /// always be closed without a hardware keyboard.
     class TouchControls : public SDLUtil::TouchListener
     {
     public:
@@ -74,6 +76,7 @@ namespace MWInput
             bool pressed;
             int fingerId;
             MyGUI::Button* widget;
+            bool isBack;    // true => sends Escape instead of a controller event
         };
 
         InputManager* mInput;
@@ -97,6 +100,7 @@ namespace MWInput
         void setJoystickAxis(int role, float x, float y);
 
         void sendButton(const Button& b, bool down);
+        void sendEscape();
         void sendAxis(int axis, float value); // value in -1..1, 0 = centre
         void sendMouseMotion(float x, float y);
         void sendMouseButton(float x, float y, bool down);

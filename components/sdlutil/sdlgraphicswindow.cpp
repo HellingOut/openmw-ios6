@@ -1,11 +1,16 @@
 #include "sdlgraphicswindow.hpp"
 
+#include <algorithm>
+
 #include <SDL_video.h>
 
 #if defined(__IPHONEOS__)
 #include <gl4esinit.h>
 #include <GL/gl.h>
 #include <SDL_syswm.h>
+
+#include "ios_render_scale.hpp"
+#include <components/settings/settings.hpp>
 #endif
 
 namespace SDLUtil
@@ -128,6 +133,23 @@ void GraphicsWindowSDL2::init()
     // gl4es disables its constructor on Apple platforms; initialise it while
     // the newly created GLES context is current.
     initialize_gl4es();
+
+    // SDL only creates the CAEAGLLayer-backed view (and the EAGL context that draws
+    // into it) inside SDL_GL_CreateContext above, so the render scale has to be
+    // applied here, and the GL strings queried here, while that context is current.
+    float renderScale = 1.0f;
+    try
+    {
+        renderScale = Settings::Manager::getFloat("ios render scale", "Video");
+    }
+    catch (const std::exception&)
+    {
+        renderScale = 1.0f;
+    }
+    renderScale = std::max(0.5f, std::min(2.0f, renderScale));
+
+    float appliedScale = OMW::applyIOSRenderScale(mWindow, renderScale);
+    OMW::logIOSGLInfo(mWindow, appliedScale);
 #endif
 
     SDL_GL_MakeCurrent(oldWin, oldCtx);
