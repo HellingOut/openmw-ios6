@@ -1,0 +1,20 @@
+#!/bin/bash
+# C++ counterpart of cc-ios.
+set -e
+: "${THEOS:=$HOME/theos}"
+TC="$THEOS/toolchain/linux/iphone/bin"
+SDK="${IOS_SDK_PATH:-$THEOS/sdks/iPhoneOS7.1.sdk}"
+ARCH="${IOS_ARCH:-armv7}"
+DEPLOYMENT="${IOS_DEPLOYMENT:-6.0}"
+
+args=()
+skip=0
+for a in "$@"; do
+  if [ "$skip" -eq 1 ]; then skip=0; continue; fi
+  case "$a" in
+    -arch|-isysroot) skip=1 ;;
+    -miphoneos-version-min=*|-mios-version-min=*|-miphonesimulator-version-min=*) ;;
+    *) args+=("$a") ;;
+  esac
+done
+exec "$TC/clang++" -target "${ARCH}-apple-ios${DEPLOYMENT}" -isysroot "$SDK" -stdlib=libc++ "${args[@]}"

@@ -1,0 +1,52 @@
+--- a/SDL2-2.0.9/src/video/uikit/SDL_uikitviewcontroller.m
++++ b/SDL2-2.0.9/src/video/uikit/SDL_uikitviewcontroller.m
+@@ -187,8 +187,17 @@ - (void)viewDidLayoutSubviews
+ - (void)viewDidLayoutSubviews
+ {
++#if SDL_IPHONE_KEYBOARD
++    /* The on-screen keyboard must never resize the GL view: while it is up,
++     * UIKit can lay the view out with a transient (keyboard-avoidance) frame,
++     * and forwarding that as a resize would corrupt OpenMW's viewport until
++     * the device is rotated. */
++    if ([self isKeyboardVisible]) {
++        return;
++    }
++#endif
+     const CGSize size = self.view.bounds.size;
+     int w = (int) size.width;
+     int h = (int) size.height;
+ 
+     SDL_SendWindowEvent(window, SDL_WINDOWEVENT_RESIZED, w, h);
+ }
+@@ -407,26 +407,8 @@ - (void)updateKeyboard
+ - (void)updateKeyboard
+ {
+-    CGAffineTransform t = self.view.transform;
+-    CGPoint offset = CGPointMake(0.0, 0.0);
+-    CGRect frame = UIKit_ComputeViewFrame(window, self.view.window.screen);
+-
+-    if (self.keyboardHeight) {
+-        int rectbottom = self.textInputRect.y + self.textInputRect.h;
+-        int keybottom = self.view.bounds.size.height - self.keyboardHeight;
+-        if (keybottom < rectbottom) {
+-            offset.y = keybottom - rectbottom;
+-        }
+-    }
+-
+-    /* Apply this view's transform (except any translation) to the offset, in
+-     * order to orient it correctly relative to the frame's coordinate space. */
+-    t.tx = 0.0;
+-    t.ty = 0.0;
+-    offset = CGPointApplyAffineTransform(offset, t);
+-
+-    /* Apply the updated offset to the view's frame. */
+-    frame.origin.x += offset.x;
+-    frame.origin.y += offset.y;
+-
+-    self.view.frame = frame;
++    /* The on-screen keyboard must never resize or shift the GL view: a frame
++     * change here would emit SDL_WINDOWEVENT_RESIZED/SIZE_CHANGED, which
++     * OpenMW treats as a viewport change and corrupts the rendered frame until
++     * the device is rotated.  Keep the view exactly as the system laid it out
++     * (full screen); do nothing on keyboard show/hide. */
+ }

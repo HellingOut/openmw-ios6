@@ -1,0 +1,23 @@
+--- a/gl4es-master/src/gl/framebuffers.c
++++ b/gl4es-master/src/gl/framebuffers.c
+@@ -1068,7 +1068,20 @@
+         return;
+     }
+      glrenderbuffer_t * rend = find_renderbuffer(renderbuffer);
++    if(!rend && renderbuffer) {
++        // Renderbuffers created before gl4es was initialised (notably the
++        // UIKit/SDL window drawable colour buffer, which SDL_GL_SwapWindow
++        // has to present) are not in gl4es' list.  Track them on demand
++        // instead of rejecting the bind with GL_INVALID_OPERATION.
++        khint_t k;
++        int ret;
++        k = kh_put(renderbufferlist_t, glstate->fbo.renderbufferlist, renderbuffer, &ret);
++        if(ret) {
++            rend = kh_value(glstate->fbo.renderbufferlist, k) = calloc(1, sizeof(glrenderbuffer_t));
++            rend->renderbuffer = renderbuffer;
++        }
++    }
+     if(!rend || (renderbuffer && !rend->renderbuffer)) {
+         errorShim(GL_INVALID_OPERATION);
+         return;
+     }

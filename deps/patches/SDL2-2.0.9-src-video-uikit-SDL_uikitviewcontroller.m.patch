@@ -1,0 +1,15 @@
+--- a/SDL2-2.0.9/src/video/uikit/SDL_uikitviewcontroller.m
++++ b/SDL2-2.0.9/src/video/uikit/SDL_uikitviewcontroller.m
+@@ -57,10 +57,12 @@
+     @autoreleasepool {
+         SDL_uikitviewcontroller *viewcontroller = (__bridge SDL_uikitviewcontroller *) userdata;
+         viewcontroller.homeIndicatorHidden = (hint && *hint) ? SDL_atoi(hint) : -1;
++#if __IPHONE_OS_VERSION_MAX_ALLOWED >= 110000
+         if (@available(iOS 11.0, *)) {
+             [viewcontroller setNeedsUpdateOfHomeIndicatorAutoHidden];
+             [viewcontroller setNeedsUpdateOfScreenEdgesDeferringSystemGestures];
+         }
++#endif
+     }
+ }
+ #endif

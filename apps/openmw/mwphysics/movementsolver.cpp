@@ -217,9 +217,15 @@ namespace MWPhysics
             // We are touching something.
             if (tracer.mFraction < 1E-9f)
             {
-                // Try to separate by backing off slighly to unstuck the solver
-                osg::Vec3f backOff = (newPosition - tracer.mHitPoint) * 1E-2f;
-                newPosition += backOff;
+                // Try to separate by backing off slighly to unstuck the solver.
+                // A contact reported at the very start of a sweep has to lie within the actor's own extent
+                // of the swept position. Guard against absurd contact points (a broken collision shape can
+                // produce them) being amplified into the actor's position: scaled by 1E-2 such a value
+                // teleports the actor outside the world, leaving only the skybox visible.
+                const osg::Vec3f backOff = (newPosition - tracer.mHitPoint) * 1E-2f;
+                const float maxBackOff = 4.f * halfExtents.length() + 100.f;
+                if (backOff.length2() <= maxBackOff * maxBackOff)
+                    newPosition += backOff;
             }
 
             // We hit something. Check if we can step up.

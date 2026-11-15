@@ -1,0 +1,17 @@
+--- a/OpenSceneGraph-OpenSceneGraph-3.4.1/include/osgViewer/GraphicsWindow
++++ b/OpenSceneGraph-OpenSceneGraph-3.4.1/include/osgViewer/GraphicsWindow
+@@ -285,7 +285,13 @@
+ #if defined(_WIN32)
+     #define USE_GRAPHICSWINDOW()  USE_GRAPICSWINDOW_IMPLEMENTATION(Win32)
+ #elif defined(__APPLE__)
+-    #define USE_GRAPHICSWINDOW()  USE_GRAPICSWINDOW_IMPLEMENTATION(Carbon)
++    #if defined(__IPHONEOS__)
++        // OpenMW supplies its own SDL-backed graphics window on iOS; there is
++        // no Carbon windowing system and OSG was built with windowing "None".
++        #define USE_GRAPHICSWINDOW()
++    #else
++        #define USE_GRAPHICSWINDOW()  USE_GRAPICSWINDOW_IMPLEMENTATION(Carbon)
++    #endif
+ #else
+     #define USE_GRAPHICSWINDOW()  USE_GRAPICSWINDOW_IMPLEMENTATION(X11)
+ #endif

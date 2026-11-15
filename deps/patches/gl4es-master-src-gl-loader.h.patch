@@ -1,0 +1,12 @@
+--- a/gl4es-master/src/gl/loader.h
++++ b/gl4es-master/src/gl/loader.h
+@@ -131,6 +131,9 @@
+ 
+ #if defined(_WIN32) || defined(_WIN64)
+   #define THREAD_LOCAL __declspec(thread)
++#elif defined(NO_LOADER) && defined(__APPLE__)
++  /* iOS 6 has no TLS; NO_LOADER only uses this for one-shot initialisation flags. */
++  #define THREAD_LOCAL
+ #elif (__STDC_VERSION__ > 201710L) // > C23
+   #define THREAD_LOCAL thread_local
+ #elif (__STDC_VERSION__ >= 201112L) // >= C11

@@ -47,10 +47,17 @@ boost::filesystem::path MacOsPath::getUserConfigPath() const
 
 boost::filesystem::path MacOsPath::getUserDataPath() const
 {
+#if defined(__IPHONEOS__)
+    // Saves, screenshots and user data are exposed through iTunes/File Sharing.
+    boost::filesystem::path userPath (getUserHome());
+    userPath /= "Documents";
+    return userPath / mName;
+#else
     boost::filesystem::path userPath (getUserHome());
     userPath /= "Library/Application Support/";
 
     return userPath / mName;
+#endif
 }
 
 boost::filesystem::path MacOsPath::getGlobalConfigPath() const
@@ -68,7 +75,12 @@ boost::filesystem::path MacOsPath::getCachePath() const
 
 boost::filesystem::path MacOsPath::getLocalPath() const
 {
+#if defined(__IPHONEOS__)
+    // The iOS bundle is flat: resources live next to the executable.
+    return boost::filesystem::path("assets");
+#else
     return boost::filesystem::path("../Resources/");
+#endif
 }
 
 boost::filesystem::path MacOsPath::getGlobalDataPath() const

@@ -1,0 +1,45 @@
+--- a/SDL2-2.0.9/CMakeLists.txt
++++ b/SDL2-2.0.9/CMakeLists.txt
+@@ -401,7 +401,7 @@
+   if(HAVE_GCC_WDECLARATION_AFTER_STATEMENT)
+     check_c_compiler_flag(-Werror=declaration-after-statement HAVE_GCC_WERROR_DECLARATION_AFTER_STATEMENT)
+     if(HAVE_GCC_WERROR_DECLARATION_AFTER_STATEMENT)
+-      list(APPEND EXTRA_CFLAGS "-Werror=declaration-after-statement")
++#      list(APPEND EXTRA_CFLAGS "-Werror=declaration-after-statement")
+     endif()
+     list(APPEND EXTRA_CFLAGS "-Wdeclaration-after-statement")
+   endif()
+@@ -1421,7 +1421,9 @@
+     set(SOURCE_FILES ${SOURCE_FILES} ${JOYSTICK_SOURCES})
+     set(HAVE_SDL_JOYSTICK TRUE)
+     set(SDL_FRAMEWORK_IOKIT 1)
+-    set(SDL_FRAMEWORK_FF 1)
++    if (NOT IOS)
++      set(SDL_FRAMEWORK_FF 1)
++    endif()
+   endif()
+ 
+   if(SDL_HAPTIC)
+@@ -1435,7 +1437,9 @@
+     set(SOURCE_FILES ${SOURCE_FILES} ${HAPTIC_SOURCES})
+     set(HAVE_SDL_HAPTIC TRUE)
+     set(SDL_FRAMEWORK_IOKIT 1)
+-    set(SDL_FRAMEWORK_FF 1)
++    if (NOT IOS)
++      set(SDL_FRAMEWORK_FF 1)
++    endif()
+     if(NOT SDL_JOYSTICK)
+       message(FATAL_ERROR "SDL_HAPTIC requires SDL_JOYSTICK to be enabled")
+     endif()
+@@ -1500,6 +1504,11 @@
+   endif()
+ 
+   # iOS hack needed - http://code.google.com/p/ios-cmake/ ?
++  if(SDL_SENSOR AND IOS)
++    file(GLOB COREMOTION_SENSOR_SOURCES ${SDL2_SOURCE_DIR}/src/sensor/coremotion/*.m)
++    set(SOURCE_FILES ${SOURCE_FILES} ${COREMOTION_SENSOR_SOURCES})
++    set(HAVE_SDL_SENSORS TRUE)
++  endif()
+   if(SDL_VIDEO)
+     if (IOS)
+       set(SDL_VIDEO_DRIVER_UIKIT 1)

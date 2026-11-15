@@ -96,6 +96,8 @@ namespace MWInput
         mInputManager->setKeyboardEventCallback (this);
         mInputManager->setWindowEventCallback(this);
         mInputManager->setControllerEventCallback(this);
+        mTouchControls.reset(new TouchControls(this));
+        mInputManager->setTouchEventCallback(mTouchControls.get());
 
         mVideoWrapper = new SDLUtil::VideoWrapper(window, viewer);
         mVideoWrapper->setGammaContrast(Settings::Manager::getFloat("gamma", "Video"),
@@ -161,6 +163,7 @@ namespace MWInput
 
         mGuiCursorX = mInvUiScalingFactor * w / 2.f;
         mGuiCursorY = mInvUiScalingFactor * h / 2.f;
+        mTouchControls->setScreenSize(w, h);
     }
 
     void InputManager::clear()
@@ -669,6 +672,8 @@ namespace MWInput
         mInputManager->setMouseVisible(MWBase::Environment::get().getWindowManager()->getCursorVisible());
 
         mInputManager->capture(disableEvents);
+
+        mTouchControls->update();
 
         if (mControlsDisabled)
         {
@@ -1362,6 +1367,8 @@ namespace MWInput
         Settings::Manager::setInt("resolution y", "Video", y);
         Settings::Manager::resetPendingChange("resolution x", "Video");
         Settings::Manager::resetPendingChange("resolution y", "Video");
+
+        mTouchControls->setScreenSize(x, y);
 
         MWBase::Environment::get().getWindowManager()->windowResized(x, y);
 

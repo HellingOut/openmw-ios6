@@ -16,6 +16,7 @@ InputWrapper::InputWrapper(SDL_Window* window, osg::ref_ptr<osgViewer::Viewer> v
         mKeyboardListener(nullptr),
         mWindowListener(nullptr),
         mConListener(nullptr),
+        mTouchListener(nullptr),
         mWarpX(0),
         mWarpY(0),
         mWarpCompensate(false),
@@ -165,12 +166,21 @@ InputWrapper::InputWrapper(SDL_Window* window, osg::ref_ptr<osgViewer::Viewer> v
                     break; // We don't need this event, clipboard is retrieved on demand
 
                 case SDL_FINGERDOWN:
+                    if (mTouchListener)
+                        mTouchListener->touchDown((int)evt.tfinger.fingerId, evt.tfinger.x, evt.tfinger.y);
+                    break;
                 case SDL_FINGERUP:
+                    if (mTouchListener)
+                        mTouchListener->touchUp((int)evt.tfinger.fingerId, evt.tfinger.x, evt.tfinger.y);
+                    break;
                 case SDL_FINGERMOTION:
+                    if (mTouchListener)
+                        mTouchListener->touchMotion((int)evt.tfinger.fingerId, evt.tfinger.x, evt.tfinger.y);
+                    break;
                 case SDL_DOLLARGESTURE:
                 case SDL_DOLLARRECORD:
                 case SDL_MULTIGESTURE:
-                    // No use for touch & gesture events
+                    // No use for gesture events
                     break;
 
                 case SDL_APP_WILLENTERBACKGROUND:
@@ -211,6 +221,7 @@ InputWrapper::InputWrapper(SDL_Window* window, osg::ref_ptr<osgViewer::Viewer> v
                 // so we ignore window moved events (improves window movement performance)
                 break;
             case SDL_WINDOWEVENT_SIZE_CHANGED:
+            {
                 int w,h;
                 SDL_GetWindowSize(mSDLWindow, &w, &h);
                 int x,y;
@@ -221,7 +232,7 @@ InputWrapper::InputWrapper(SDL_Window* window, osg::ref_ptr<osgViewer::Viewer> v
 
                 if (mWindowListener)
                     mWindowListener->windowResized(w, h);
-
+            }
                 break;
 
             case SDL_WINDOWEVENT_RESIZED:

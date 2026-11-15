@@ -5,11 +5,19 @@ CMakeCache.txt
 cmake_install.cmake
 Makefile
 makefile
+!/Makefile
 build*
 prebuilt
 
 ##windows build process
-/deps
+/deps/*
+!/deps/apply-patches.sh
+!/deps/build-*.sh
+!/deps/env.sh
+!/deps/patches/
+!/deps/patches/**
+!/deps/toolchain/
+!/deps/toolchain/**
 /MSVC*
 
 ## doxygen
@@ -49,6 +57,11 @@ resources
 /openmw-iniimporter
 /openmw-launcher
 /openmw-wizard
+
+## iOS port build artifacts
+/.theos/
+/Resources/
+/packages/
 
 ## generated objects
 apps/openmw/config.hpp

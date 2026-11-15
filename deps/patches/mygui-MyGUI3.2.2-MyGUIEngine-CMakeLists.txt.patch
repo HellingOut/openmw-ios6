@@ -1,0 +1,20 @@
+--- a/mygui-MyGUI3.2.2/MyGUIEngine/CMakeLists.txt
++++ b/mygui-MyGUI3.2.2/MyGUIEngine/CMakeLists.txt
+@@ -42,7 +42,7 @@
+ endif()
+ 
+ # platform specific dependencies
+-if (APPLE)
++if (APPLE AND NOT CMAKE_SYSTEM_NAME STREQUAL "iOS")
+ 	include_directories(/usr/local/include /usr/include)
+ 	target_link_libraries(${PROJECTNAME} ${Carbon_LIBRARY})
+ endif ()
+@@ -57,7 +57,7 @@
+ mygui_config_lib(${PROJECTNAME})
+ 
+ # link Carbon on Mac OS X
+-if (APPLE)
++if (APPLE AND NOT CMAKE_SYSTEM_NAME STREQUAL "iOS")
+ 	find_library(CARBON_LIBRARY Carbon)
+ 	target_link_libraries(${PROJECTNAME} ${CARBON_LIBRARY})
+ endif ()

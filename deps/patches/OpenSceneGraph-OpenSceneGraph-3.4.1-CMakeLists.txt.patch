@@ -1,0 +1,61 @@
+--- a/OpenSceneGraph-OpenSceneGraph-3.4.1/CMakeLists.txt
++++ b/OpenSceneGraph-OpenSceneGraph-3.4.1/CMakeLists.txt
+@@ -33,14 +33,14 @@
+     if(${CMAKE_MAJOR_VERSION} GREATER 2 OR
+         (${CMAKE_MAJOR_VERSION} EQUAL 2 AND ${CMAKE_MINOR_VERSION} GREATER 6) OR
+         (${CMAKE_MAJOR_VERSION} EQUAL 2 AND ${CMAKE_MINOR_VERSION} EQUAL 6 AND ${CMAKE_PATCH_VERSION} GREATER 0))
+-        cmake_policy(SET CMP0008 OLD)
++        cmake_policy(SET CMP0008 NEW)
+     endif()
+ 
+     # disable autolinking to qtmain as we have our own main() functions (new in Qt 5.1)
+     if(${CMAKE_MAJOR_VERSION} GREATER 2 OR
+         (${CMAKE_MAJOR_VERSION} EQUAL 2 AND ${CMAKE_MINOR_VERSION} GREATER 8) OR
+         (${CMAKE_MAJOR_VERSION} EQUAL 2 AND ${CMAKE_MINOR_VERSION} EQUAL 8 AND ${CMAKE_PATCH_VERSION} GREATER 10))
+-        cmake_policy(SET CMP0020 OLD)
++        cmake_policy(SET CMP0020 NEW)
+     endif()
+     # nicer version check - but needs at least CMake 2.6.2? Worth upgrading the requirements?
+     #if("${CMAKE_VERSION}" VERSION_GREATER 2.8.10)
+@@ -167,7 +167,7 @@
+ ENDIF(OSG_MAINTAINER)
+ 
+ IF(NOT ANDROID)
+-IF(APPLE)
++IF(APPLE AND NOT CMAKE_SYSTEM_NAME STREQUAL "iOS")
+     # Determine the canonical name of the selected Platform SDK
+     EXECUTE_PROCESS(COMMAND "/usr/bin/sw_vers" "-productVersion"
+                     OUTPUT_VARIABLE OSG_OSX_SDK_NAME
+@@ -505,7 +505,7 @@
+         # TODO: GLES3
+     ENDIF()
+ ELSE()
+-    IF (APPLE)
++    IF (APPLE AND NOT CMAKE_SYSTEM_NAME STREQUAL "iOS")
+         SET(OPENGL_HEADER1 "#include <OpenGL/gl.h>" CACHE STRING "#include<> line for OpenGL Header")
+         SET(OPENGL_HEADER2 "" CACHE STRING "#include<> line for additional OpenGL Headers if required")
+     ELSE()
+@@ -784,6 +784,14 @@
+ # Image readers/writers depend on 3rd party libraries except for OS X which
+ # can use Quicktime.
+ IF(NOT ANDROID)
++    IF(CMAKE_SYSTEM_NAME STREQUAL "iOS")
++        # iOS is APPLE but uses gl4es/zlib/png/jpeg from deps, not the macOS
++        # system frameworks, so find the same third-party libs as on other
++        # platforms.
++        FIND_PACKAGE(JPEG)
++        FIND_PACKAGE(PNG)
++        FIND_PACKAGE(FREETYPE)
++    ENDIF()
+     IF(NOT APPLE)
+         FIND_PACKAGE(GIFLIB)
+         FIND_PACKAGE(JPEG)
+@@ -1053,7 +1061,7 @@
+ ENDIF()
+ 
+ 
+-IF(APPLE AND NOT ANDROID)
++IF(APPLE AND NOT ANDROID AND NOT CMAKE_SYSTEM_NAME STREQUAL "iOS")
+ 
+         #Here we check if the user specified IPhone SDK
+     IF(OSG_BUILD_PLATFORM_IPHONE OR OSG_BUILD_PLATFORM_IPHONE_SIMULATOR)

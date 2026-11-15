@@ -1,0 +1,20 @@
+--- a/gl4es-master/src/gl/glstate.c
++++ b/gl4es-master/src/gl/glstate.c
+@@ -404,6 +404,16 @@
+     gles_glGetIntegerv(GL_VIEWPORT, (GLint*)&glstate->raster.viewport);
+     gles_glGetIntegerv(GL_SCISSOR_BOX, (GLint*)&glstate->raster.scissor);
+     glstate->raster.viewport_known = 1;
+     glstate->raster.scissor_known = 1;
++    // On iOS the window's drawable lives in a caller-created framebuffer object
++    // (e.g. SDL2's UIKit backend), not in framebuffer 0. Record the currently
++    // bound framebuffer so glBindFramebuffer(0) maps back to the real window
++    // framebuffer instead of an empty default framebuffer.
++    {
++        GLint mainfbo = 0;
++        gles_glGetIntegerv(GL_FRAMEBUFFER_BINDING, &mainfbo);
++        if (mainfbo > 0)
++            glstate->fbo.mainfbo_fbo = (GLuint)mainfbo;
++    }
+ #if defined(AMIGAOS4) || defined(__EMSCRIPTEN__)
+     }
+ #endif

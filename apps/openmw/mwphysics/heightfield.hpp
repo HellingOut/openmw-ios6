@@ -3,6 +3,10 @@
 
 #include <osg/ref_ptr>
 
+#include <LinearMath/btScalar.h>
+
+#include <vector>
+
 class btCollisionObject;
 class btHeightfieldTerrainShape;
 
@@ -24,6 +28,9 @@ namespace MWPhysics
         const btHeightfieldTerrainShape* getShape() const;
 
     private:
+        // Copy of the height data converted to btScalar, owned because the shape references it
+        // directly (see the constructor for why the original float data cannot be used).
+        std::vector<btScalar> mHeights;
         btHeightfieldTerrainShape* mShape;
         btCollisionObject* mCollisionObject;
         osg::ref_ptr<const osg::Object> mHoldObject;

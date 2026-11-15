@@ -378,6 +378,7 @@ void OMW::Engine::createWindow(Settings::Manager& settings)
     checkSDLError(SDL_GL_SetAttribute(SDL_GL_BLUE_SIZE, 8));
     checkSDLError(SDL_GL_SetAttribute(SDL_GL_ALPHA_SIZE, 0));
     checkSDLError(SDL_GL_SetAttribute(SDL_GL_DEPTH_SIZE, 24));
+    checkSDLError(SDL_GL_SetAttribute(SDL_GL_STENCIL_SIZE, 8));
 
     if (antialiasing > 0)
     {

@@ -30,6 +30,7 @@ namespace SDLUtil
         void setKeyboardEventCallback(KeyListener* listen) { mKeyboardListener = listen; }
         void setWindowEventCallback(WindowListener* listen) { mWindowListener = listen; }
         void setControllerEventCallback(ControllerListener* listen) { mConListener = listen; }
+        void setTouchEventCallback(TouchListener* listen) { mTouchListener = listen; }
 
         void capture(bool windowEventsOnly);
         bool isModifierHeld(int mod);
@@ -63,6 +64,7 @@ namespace SDLUtil
         KeyListener* mKeyboardListener;
         WindowListener* mWindowListener;
         ControllerListener* mConListener;
+        TouchListener* mTouchListener;
 
         typedef std::map<SDL_Keycode, OIS::KeyCode> KeyMap;
         KeyMap mKeyMap;

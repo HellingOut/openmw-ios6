@@ -17,6 +17,10 @@
 
 #include "../mwbase/inputmanager.hpp"
 
+#include "touchcontrols.hpp"
+
+#include <memory>
+
 namespace MWWorld
 {
     class Player;
@@ -297,6 +301,8 @@ namespace MWInput
 
         int mFakeDeviceID; //As we only support one controller at a time, use a fake deviceID so we don't lose bindings when switching controllers
         SDL_Sensor* mGyroscope;
+
+        std::unique_ptr<TouchControls> mTouchControls;
 
     private:
         enum Actions

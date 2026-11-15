@@ -2,6 +2,12 @@
 
 #include <SDL_video.h>
 
+#if defined(__IPHONEOS__)
+#include <gl4esinit.h>
+#include <GL/gl.h>
+#include <SDL_syswm.h>
+#endif
+
 namespace SDLUtil
 {
 
@@ -118,6 +124,12 @@ void GraphicsWindowSDL2::init()
 
     setSwapInterval(_traits->vsync);
 
+#if defined(__IPHONEOS__)
+    // gl4es disables its constructor on Apple platforms; initialise it while
+    // the newly created GLES context is current.
+    initialize_gl4es();
+#endif
+
     SDL_GL_MakeCurrent(oldWin, oldCtx);
 
     mValid = true;
@@ -186,6 +198,22 @@ void GraphicsWindowSDL2::closeImplementation()
 void GraphicsWindowSDL2::swapBuffersImplementation()
 {
     if(!mRealized) return;
+
+#if defined(__IPHONEOS__)
+    // SDL's UIKit backend presents whatever renderbuffer is bound to
+    // GL_RENDERBUFFER (EAGLContext presentRenderbuffer:), so SDL_SysWMinfo
+    // documents that the view's color buffer must be bound when
+    // SDL_GL_SwapWindow is called.  OSG binds renderbuffers of its own while
+    // setting up frame buffer objects (osg::RenderBuffer) and never restores
+    // the drawable one.  Without this the first FBO render leaves a foreign
+    // renderbuffer bound and EAGL keeps presenting that stale buffer: the
+    // engine keeps running and reacts to input, but the display never updates.
+    SDL_SysWMinfo wmInfo;
+    SDL_VERSION(&wmInfo.version);
+    if (SDL_GetWindowWMInfo(mWindow, &wmInfo) && wmInfo.subsystem == SDL_SYSWM_UIKIT
+            && wmInfo.info.uikit.colorbuffer != 0)
+        glBindRenderbuffer(GL_RENDERBUFFER, wmInfo.info.uikit.colorbuffer);
+#endif
 
     SDL_GL_SwapWindow(mWindow);
 }

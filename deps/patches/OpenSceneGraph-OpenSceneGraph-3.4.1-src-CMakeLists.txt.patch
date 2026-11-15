@@ -1,0 +1,10 @@
+--- a/OpenSceneGraph-OpenSceneGraph-3.4.1/src/CMakeLists.txt
++++ b/OpenSceneGraph-OpenSceneGraph-3.4.1/src/CMakeLists.txt
+@@ -27,7 +27,6 @@
+         osgUI
+         osgVolume
+         osgWrappers/serializers
+-        osgWrappers/deprecated-dotosg
+         osgPlugins
+     )
+ 

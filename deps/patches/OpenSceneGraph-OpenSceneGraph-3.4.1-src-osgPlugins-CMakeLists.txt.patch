@@ -1,0 +1,37 @@
+--- a/OpenSceneGraph-OpenSceneGraph-3.4.1/src/osgPlugins/CMakeLists.txt
++++ b/OpenSceneGraph-OpenSceneGraph-3.4.1/src/osgPlugins/CMakeLists.txt
+@@ -32,6 +32,25 @@
+     osgUtil
+ )
+ 
++# iOS build: only the image/reader plugins OpenMW actually uses.  Building all
++# optional plugins (IVE, OpenFlight, ...) is unnecessary and very slow.
++IF(CMAKE_SYSTEM_NAME STREQUAL "iOS")
++    ADD_SUBDIRECTORY(osg)
++    ADD_SUBDIRECTORY(bmp)
++    ADD_SUBDIRECTORY(dds)
++    ADD_SUBDIRECTORY(tga)
++    IF(JPEG_FOUND)
++        ADD_SUBDIRECTORY(jpeg)
++    ENDIF()
++    IF(PNG_FOUND)
++        ADD_SUBDIRECTORY(png)
++    ENDIF()
++    IF(FREETYPE_FOUND)
++        ADD_SUBDIRECTORY(freetype)
++    ENDIF()
++    RETURN()
++ENDIF()
++
+ ############################################################
+ #
+ #  NodeKit/Psudo loader plugins
+@@ -215,7 +234,7 @@
+ #    ADD_SUBDIRECTORY(OpenAL)
+ # ENDIF()
+ 
+-IF(APPLE AND NOT ANDROID)
++IF(APPLE AND NOT ANDROID AND NOT CMAKE_SYSTEM_NAME STREQUAL "iOS")
+     ADD_SUBDIRECTORY(imageio)
+ ENDIF()
+ 

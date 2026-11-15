@@ -1,0 +1,11 @@
+--- a/SDL2-2.0.9/src/video/uikit/SDL_uikitview.m
++++ b/SDL2-2.0.9/src/video/uikit/SDL_uikitview.m
+@@ -164,7 +164,7 @@
+     for (UITouch *touch in touches) {
+         float pressure = [self pressureForTouch:touch];
+ 
+-        if (!firstFingerDown) {
++        if (!firstFingerDown && SDL_GetHintBoolean(SDL_HINT_TOUCH_MOUSE_EVENTS, SDL_TRUE)) {
+             CGPoint locationInView = [self touchLocation:touch shouldNormalize:NO];
+             int clicks = (int) touch.tapCount;
+ 

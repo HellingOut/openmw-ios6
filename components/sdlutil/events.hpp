@@ -87,6 +87,21 @@ public:
     virtual void windowResized (int x, int y) {}
 };
 
+class TouchListener
+{
+public:
+    virtual ~TouchListener() {}
+
+    /** @remarks A finger touched the screen.  x/y are normalised (0..1), origin top-left. */
+    virtual void touchDown(int fingerId, float x, float y) = 0;
+
+    /** @remarks A finger was lifted from the screen. */
+    virtual void touchUp(int fingerId, float x, float y) = 0;
+
+    /** @remarks A finger moved across the screen. */
+    virtual void touchMotion(int fingerId, float x, float y) = 0;
+};
+
 }
 
 #endif

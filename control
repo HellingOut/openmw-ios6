@@ -1,0 +1,9 @@
+Package: org.openmw.ios6
+Name: OpenMW
+Version: 0.46.0
+Architecture: iphoneos-arm
+Description: OpenMW (Morrowind engine) for iOS 6+, armv7
+Maintainer: helling
+Author: OpenMW contributors
+Section: Games
+Depends: firmware (>= 6.0)

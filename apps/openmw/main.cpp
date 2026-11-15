@@ -8,6 +8,10 @@
 
 #include "engine.hpp"
 
+#if defined(__IPHONEOS__)
+#include <SDL.h>
+#endif
+
 #if defined(_WIN32)
 #ifndef WIN32_LEAN_AND_MEAN
 #define WIN32_LEAN_AND_MEAN
@@ -190,7 +194,27 @@ bool parseOptions (int argc, char** argv, OMW::Engine& engine, Files::Configurat
         dataDirs.push_back(Files::PathContainer::value_type(local));
     }
 
+#if defined(__IPHONEOS__)
+    // The data directory is chosen in code so that paths containing spaces
+    // ("Data Files") do not have to survive program_options/config parsing.
+    dataDirs.clear();
+    if (const char* home = getenv("HOME"))
+    {
+        boost::filesystem::path base(home);
+        base /= "Documents/OpenMW/data";
+        if (boost::filesystem::is_directory(base / "Data Files"))
+            dataDirs.push_back(base / "Data Files");
+        else if (boost::filesystem::is_directory(base / "DataFiles"))
+            dataDirs.push_back(base / "DataFiles");
+        else
+            dataDirs.push_back(base);
+    }
+#endif
+
     cfgMgr.processPaths(dataDirs);
+
+    for (Files::PathContainer::const_iterator it = dataDirs.begin(); it != dataDirs.end(); ++it)
+        Log(Debug::Info) << "Data directory: " << it->string();
 
     engine.setResourceDir(variables["resources"].as<Files::EscapeHashString>().toStdString());
     engine.setDataDirs(dataDirs);
@@ -244,7 +268,44 @@ bool parseOptions (int argc, char** argv, OMW::Engine& engine, Files::Configurat
 
 int runApplication(int argc, char *argv[])
 {
-#ifdef __APPLE__
+#if defined(__IPHONEOS__)
+    setenv("LIBGL_USEVBO", "0", 0);
+    setenv("LIBGL_LOGSHADERERROR", "1", 1);
+    setenv("LIBGL_NOBANNER", "1", 1);
+
+    // Touch is handled by OpenMW's own virtual gamepad (see TouchControls);
+    // disable SDL's automatic touch -> mouse synthesis so the first finger does
+    // not also drive mouse-look / left-click.
+    SDL_SetHint(SDL_HINT_TOUCH_MOUSE_EVENTS, "0");
+
+    // On this jailbroken setup game data lives outside the app container so
+    // that reinstalling the IPA does not lose it.  Expose it through a
+    // symlink inside the sandbox if the user has placed it globally.
+    if (const char* home = getenv("HOME"))
+    {
+        boost::filesystem::path dataRoot(home);
+        dataRoot /= "Documents/OpenMW/data";
+        if (!boost::filesystem::exists(dataRoot))
+        {
+            boost::filesystem::path globalData("/var/mobile/Documents/OpenMW/data");
+            if (boost::filesystem::exists(globalData))
+            {
+                boost::filesystem::create_directories(dataRoot.parent_path());
+                ::symlink(globalData.c_str(), dataRoot.c_str());
+            }
+        }
+    }
+
+    // On iOS the executable lives inside a read-only .app; the engine's
+    // resources are staged next to it.  SDL knows the bundle path.
+    char* basePath = SDL_GetBasePath();
+    if (basePath != nullptr)
+    {
+        boost::filesystem::current_path(boost::filesystem::path(basePath));
+        SDL_free(basePath);
+    }
+    setenv("OSG_GL_TEXTURE_STORAGE", "OFF", 0);
+#elif defined(__APPLE__)
     boost::filesystem::path binary_path = boost::filesystem::system_complete(boost::filesystem::path(argv[0]));
     boost::filesystem::current_path(binary_path.parent_path());
     setenv("OSG_GL_TEXTURE_STORAGE", "OFF", 0);
@@ -262,7 +323,8 @@ int runApplication(int argc, char *argv[])
     return 0;
 }
 
-#ifdef ANDROID
+#if defined(ANDROID) || defined(__IPHONEOS__)
+/* SDL on Android/iOS provides main() and calls SDL_main(). */
 extern "C" int SDL_main(int argc, char**argv)
 #else
 int main(int argc, char**argv)
