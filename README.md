@@ -1,108 +1,184 @@
-OpenMW
-======
+# OpenMW iOS 6 port
 
-[![Build Status](https://api.travis-ci.org/OpenMW/openmw.svg)](https://travis-ci.org/OpenMW/openmw) [![Build status](https://ci.appveyor.com/api/projects/status/github/openmw/openmw?svg=true)](https://ci.appveyor.com/project/psi29a/openmw)  [![Coverity Scan Build Status](https://scan.coverity.com/projects/3740/badge.svg)](https://scan.coverity.com/projects/3740) [![pipeline status](https://gitlab.com/OpenMW/openmw/badges/master/pipeline.svg)](https://gitlab.com/OpenMW/openmw/commits/master)
+This branch ports OpenMW **0.46** to **iOS 6 / armv7** using the Theos build
+system. It builds a signed `OpenMW.app` and an unsigned `.ipa`; the launcher,
+OpenMW-CS and the installation wizard (which require Qt) are not part of the
+port.
 
-OpenMW is an open-source game engine that supports playing Morrowind by Bethesda Softworks. You need to own the game for OpenMW to play Morrowind.
+## Requirements
 
-OpenMW also comes with OpenMW-CS, a replacement for Bethesda's Construction Set.
+- Theos with `iPhoneOS7.1.sdk` and the Linux clang toolchain.
+- `cmake`, `ninja`/`make`, `git`, `curl`, a C/C++ host toolchain.
+- About 4 GB of disk space for sources and build trees.
 
-* Version: 0.46.0
-* License: GPLv3 (see [LICENSE](https://github.com/OpenMW/openmw/blob/master/LICENSE) for more information)
-* Website: https://www.openmw.org
-* IRC: #openmw on irc.freenode.net
+The target is `iphone:clang:7.1:6.0`, `ARCHS = armv7`. The resulting binary has
+`LC_VERSION_MIN_IPHONEOS 6.0` and runs on 32-bit iOS (6 through 10).
 
-Font Licenses:
-* DejaVuLGCSansMono.ttf: custom (see [files/mygui/DejaVu Font License.txt](https://github.com/OpenMW/openmw/blob/master/files/mygui/DejaVu%20Font%20License.txt) for more information)
+## Building
 
-Current Status
---------------
+```sh
+export THEOS=$HOME/theos
+make deps                       # downloads and builds all native dependencies
+make package PACKAGE_FORMAT=ipa # builds packages/org.openmw.ios6_*.ipa
+# For a playable (optimised) build:
+make package PACKAGE_FORMAT=ipa DEBUG=0
+```
 
-The main quests in Morrowind, Tribunal and Bloodmoon are all completable. Some issues with side quests are to be expected (but rare). Check the [bug tracker](https://gitlab.com/OpenMW/openmw/issues?label_name%5B%5D=1.0) for a list of issues we need to resolve before the "1.0" release. Even before the "1.0" release however, OpenMW boasts some new [features](https://wiki.openmw.org/index.php?title=Features), such as improved graphics and user interfaces. 
+`make deps` is only needed once (or after changing a dependency). All
+third-party libraries are installed as static archives in `deps/lib` and
+headers in `deps/include`; they are force-loaded into the application. The
+resulting executable links only against iOS system frameworks and libSystem.
 
-Pre-existing modifications created for the original Morrowind engine can be hit-and-miss. The OpenMW script compiler performs more thorough error-checking than Morrowind does, meaning that a mod created for Morrowind may not necessarily run in OpenMW. Some mods also rely on quirky behaviour or engine bugs in order to work. We are considering such compatibility issues on a case-by-case basis - in some cases adding a workaround to OpenMW may be feasible, in other cases fixing the mod will be the only option. If you know of any mods that work or don't work, feel free to add them to the [Mod status](https://wiki.openmw.org/index.php?title=Mod_status) wiki page.
+Dependencies built by `make deps`:
 
-Getting Started
----------------
+| Library | Version | Notes |
+| --- | --- | --- |
+| zlib | 1.2.13 | static |
+| libpng | 1.6.37 | static, no ARM NEON |
+| libjpeg-turbo | 2.1.4 | static, no SIMD |
+| FreeType | 2.11.1 | static |
+| SDL2 | 2.0.9 | UIKit video/audio/power/MFi backends |
+| Boost | 1.78.0 | system, filesystem, program_options, iostreams |
+| Bullet | 2.89 | static, double precision |
+| MyGUI | 3.2.2 | engine only (OpenMW provides the OSG platform) |
+| OpenSceneGraph | 3.4.1 | static, GL2 profile, image plugins only |
+| FFmpeg | 4.4 | static, decoders only, no assembly |
+| OpenAL Soft | 1.21.1 | static, CoreAudio backend |
+| GL4ES | pinned commit | desktop OpenGL 2.x → OpenGL ES 2.0 |
 
-* [Official forums](https://forum.openmw.org/)
-* [Installation instructions](https://wiki.openmw.org/index.php?title=Installation_Instructions)
-* [Build from source](https://wiki.openmw.org/index.php?title=Development_Environment_Setup)
-* [Testing the game](https://wiki.openmw.org/index.php?title=Testing)
-* [How to contribute](https://wiki.openmw.org/index.php?title=Contribution_Wanted)
-* [Report a bug](https://gitlab.com/OpenMW/openmw/issues) - read the [guidelines](https://wiki.openmw.org/index.php?title=Bug_Reporting_Guidelines) before submitting your first bug!
-* [Known issues](https://gitlab.com/OpenMW/openmw/issues?label_name%5B%5D=Bug)
+The small portability patches live in `deps/patches`; `make deps` applies them
+automatically and is safe to re-run.
 
-The data path
--------------
+## Layout in the application bundle
 
-The data path tells OpenMW where to find your Morrowind files. If you run the launcher, OpenMW should be able to pick up the location of these files on its own, if both Morrowind and OpenMW are installed properly (installing Morrowind under WINE is considered a proper install).
+```
+OpenMW.app/
+  openmw              # SDL calls SDL_main() from apps/openmw/main.cpp
+  Info.plist
+  assets/
+    mygui/ shaders/ vfs/
+    settings-default.cfg openmw.cfg version gamecontrollerdb.txt
+```
 
-Command line options
---------------------
+The engine changes the working directory to the bundle path with
+`SDL_GetBasePath()` before reading its configuration, so `resources` resolves
+relative to the `.app`. The directory is deliberately named `assets`:
+iOS 8.4.1 installd rejects a top-level folder literally named `resources`.
 
-    Syntax: openmw <options>
-    Allowed options:
-      --help                                print help message
-      --version                             print version information and quit
-      --data arg (=data)                    set data directories (later directories
-                                            have higher priority)
-      --data-local arg                      set local data directory (highest
-                                            priority)
-      --fallback-archive arg (=fallback-archive)
-                                            set fallback BSA archives (later
-                                            archives have higher priority)
-      --resources arg (=resources)          set resources directory
-      --start arg                           set initial cell
-      --content arg                         content file(s): esm/esp, or
-                                            omwgame/omwaddon
-      --no-sound [=arg(=1)] (=0)            disable all sounds
-      --script-verbose [=arg(=1)] (=0)      verbose script output
-      --script-all [=arg(=1)] (=0)          compile all scripts (excluding dialogue
-                                            scripts) at startup
-      --script-all-dialogue [=arg(=1)] (=0) compile all dialogue scripts at startup
-      --script-console [=arg(=1)] (=0)      enable console-only script
-                                            functionality
-      --script-run arg                      select a file containing a list of
-                                            console commands that is executed on
-                                            startup
-      --script-warn [=arg(=1)] (=1)         handling of warnings when compiling
-                                            scripts
-                                            0 - ignore warning
-                                            1 - show warning but consider script as
-                                            correctly compiled anyway
-                                            2 - treat warnings as errors
-      --script-blacklist arg                ignore the specified script (if the use
-                                            of the blacklist is enabled)
-      --script-blacklist-use [=arg(=1)] (=1)
-                                            enable script blacklisting
-      --load-savegame arg                   load a save game file on game startup
-                                            (specify an absolute filename or a
-                                            filename relative to the current
-                                            working directory)
-      --skip-menu [=arg(=1)] (=0)           skip main menu on game startup
-      --new-game [=arg(=1)] (=0)            run new game sequence (ignored if
-                                            skip-menu=0)
-      --fs-strict [=arg(=1)] (=0)           strict file system handling (no case
-                                            folding)
-      --encoding arg (=win1252)             Character encoding used in OpenMW game
-                                            messages:
 
-                                            win1250 - Central and Eastern European
-                                            such as Polish, Czech, Slovak,
-                                            Hungarian, Slovene, Bosnian, Croatian,
-                                            Serbian (Latin script), Romanian and
-                                            Albanian languages
+## Port-specific source changes
 
-                                            win1251 - Cyrillic alphabet such as
-                                            Russian, Bulgarian, Serbian Cyrillic
-                                            and other languages
+- `apps/openmw/main.cpp` — `SDL_main` entry point on iOS, bundle-relative cwd.
+- `apps/openmw/mwphysics/heightfield.cpp` — terrain heights are converted to
+  `btScalar` before being handed to `btHeightfieldTerrainShape`. Bullet 2.89
+  declares that buffer as `const btScalar*`, so with `BT_USE_DOUBLE_PRECISION`
+  (which this build uses) it read 8 bytes per vertex out of the game's `float`
+  array, stepping over every second height. The resulting collision mesh was
+  garbage: the player fell through all terrain, and the degenerate "contacts" it
+  produced could throw the actor millions of units away (only the skybox
+  visible). Single-precision Bullet, as used by most desktop builds, hides this.
+- `apps/openmw/mwphysics/movementsolver.cpp` — the "unstuck" separation offset is
+  range-checked before it is applied, so an absurd contact point can no longer be
+  amplified into the actor's position.
+- `components/detournavigator/recastglobalallocator.hpp` — pthread-key
+  substitute for `thread_local` (iOS 6 has no TLS support).
+- `components/detournavigator/recastmeshbuilder.cpp` — explicit `btScalar`
+  template arguments for double-precision Bullet.
+- `components/crashcatcher/crashcatcher.hpp` — the Linux/macOS crash handler is
+  disabled on iOS (it needs `libproc.h`, which iOS does not provide).
+- `components/sdlutil/sdlgraphicswindow.cpp` — the EAGL drawable colour buffer
+  is re-bound before `SDL_GL_SwapWindow`. SDL presents whatever renderbuffer is
+  currently bound, while OSG leaves the renderbuffer of the last FBO camera
+  bound, which froze the display on the loading screen after the first frame
+  buffer object was used.
+- `deps/patches/gl4es-master-src-gl-framebuffers.c.patch` — gl4es accepts
+  renderbuffer ids it did not create, so the SDL/UIKit drawable colour buffer
+  can be bound again (see the entry above).
 
-                                            win1252 - Western European (Latin)
-                                            alphabet, used by default
-      --fallback arg                        fallback values
-      --no-grab                             Don't grab mouse cursor
-      --export-fonts [=arg(=1)] (=0)        Export Morrowind .fnt fonts to PNG
-                                            image and XML file in current directory
-      --activate-dist arg (=-1)             activation distance override
-      --random-seed arg (=<impl defined>)   seed value for random number generator
+## iOS screen size / rotation stability
+
+After using Notification Center or Control Center, or after switching away
+from and back to the app, the rendered picture could jump or be cropped, touch
+input could go dead on one half of the screen, and in the worst case the whole
+device (SpringBoard) froze.
+
+The root cause is that UIKit can swap the EAGL view's bounds between
+1024x768 and 768x1024 during a resign/activate cycle while leaving the
+90-degree rotation transform in place. `view.frame` then grew beyond
+`UIWindow.bounds` and was clipped. On the engine side, OSG's camera viewport
+only followed SDL `RESIZED` events while MyGUI consumed SDL's window size, so
+the two disagreed. Presenting a drawable whose size no longer matched the
+layer wedged the PowerVR driver; the crash reports showed this as an
+`EXC_BAD_ACCESS` in `IMGSGX554GLDriver`.
+
+The fix has several cooperating parts:
+
+- `SDL_uikitopenglview.m` — `layoutSubviews` keeps `view.frame` equal to
+  `window.bounds`, deriving the view bounds through the inverse of the rotation
+  transform; `swapBuffers` re-creates the drawable when it disagrees with the
+  current view bounds and rebinds it before presenting.
+- `SDL_uikitvideo.m` — `UIKit_ComputeViewFrame` prefers the `UIWindow` bounds
+  over the `UIScreen` bounds, with a fullscreen guard so that only a truly
+  fullscreen window is orientation-swapped.
+- `SDL_uikitviewcontroller.m` — transient layouts (including keyboard
+  avoidance) are no longer reported as window resizes.
+- `SDL_uikitappdelegate.m` — `attemptRotationToDeviceOrientation` runs on
+  activation so that UIKit re-synchronises the layout.
+- `components/sdlutil/sdlinputwrapper.cpp`, `apps/openmw/engine.cpp` and
+  `apps/openmw/mwinput/inputmanagerimp.cpp` — the engine, viewport and UI all
+  use the EAGL drawable size on iOS, the camera viewport and projection are
+  synced on size changes, and SDL is told the app is landscape-only. Window
+  sizes are not persisted as the video resolution on iOS.
+
+These changes are applied by `deps/apply-patches.sh`; see the
+`deps/patches/SDL2-2.0.9-src-video-uikit-*.patch` files.
+
+## Installing
+
+```sh
+scp packages/org.openmw.ios6_*.ipa mobile@iPadHelling:/var/mobile/
+ssh mobile@iPadHelling
+appinst /var/mobile/org.openmw.ios6_*.ipa
+```
+
+The bundle is installed as `/Applications/OpenMW.app`. Configuration and logs
+live in `$HOME/Library/Preferences/OpenMW`; saves and screenshots go to
+`$HOME/Documents/OpenMW/{saves,screenshots}`.
+
+Game data can be placed in either of these locations:
+
+- `$HOME/Documents/OpenMW/data/Data Files` inside the app's data container, or
+- `/var/mobile/Documents/OpenMW/data/Data Files` for this jailbroken device.
+  On startup the app creates a symlink from its container to that directory if
+  it exists, so reinstalling the IPA does not require copying 1.2 GB again.
+
+`appinst` creates a fresh data container on every install. The automatic
+symlink handles the game data; copied saves in the old container are not
+migrated.
+
+### Install troubleshooting
+
+- The application bundle deliberately uses `assets/` instead of `resources/`.
+  iOS 8.4.1 `installd` rejects a top-level directory named `resources` with a
+  misleading `MissingBundleIdentifier` LaunchServices error.
+- `LIBGL_USEVBO=0` is set by the app: the gl4es VBO conversion path crashes the
+  iOS 8.4 PowerVR driver in `fpe_glDrawArrays`/`GLEngine`. The client-array
+  path renders correctly.
+
+## Debugging
+
+`debugserver` is available on the test device:
+
+```sh
+$HOME/debugserver *:1234 $HOME/Containers/Bundle/Application/*/OpenMW.app/openmw
+```
+
+then on the host:
+
+```sh
+lldb
+(lldb) process connect connect://iPadHelling:1234
+```
+
+Logs from the engine go to `$HOME/Library/Preferences/OpenMW/openmw.log`
+inside the application sandbox.
