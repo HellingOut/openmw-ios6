@@ -424,8 +424,9 @@ namespace SceneUtil
 
         // Possible optimizations:
         // - cull list of lights by the camera frustum
-        // - lights are looked up through a 2D spatial grid (see LightGrid), which could be extended
-        //   to a full quad tree if the light count ever becomes large enough to warrant it
+        // Implemented: lights are looked up through a 2D spatial grid (see LightGrid),
+        // which could be extended to a full quad tree if the light count ever becomes
+        // large enough to warrant it.
 
 
         // update light list if necessary
