@@ -1,11 +1,19 @@
 #include "lightmanager.hpp"
 
+#include <algorithm>
+#include <cmath>
+#include <cstdint>
+#include <vector>
+
 #include <osgUtil/CullVisitor>
 
 #include <components/sceneutil/util.hpp>
 
 namespace SceneUtil
 {
+
+    const float LightManager::LightGrid::CELL_SIZE = 1024.0f;
+    const float LightManager::LightGrid::LARGE_LIGHT_THRESHOLD = 768.0f;
 
     class LightStateCache
     {
@@ -161,7 +169,8 @@ namespace SceneUtil
     };
 
     LightManager::LightManager()
-        : mStartLight(0)
+        : mLightGridCamera(nullptr)
+        , mStartLight(0)
         , mLightingMask(~0u)
     {
         setUpdateCallback(new LightManagerUpdateCallback);
@@ -171,6 +180,7 @@ namespace SceneUtil
 
     LightManager::LightManager(const LightManager &copy, const osg::CopyOp &copyop)
         : osg::Group(copy, copyop)
+        , mLightGridCamera(nullptr)
         , mStartLight(copy.mStartLight)
         , mLightingMask(copy.mLightingMask)
     {
@@ -191,6 +201,7 @@ namespace SceneUtil
     {
         mLights.clear();
         mLightsInViewSpace.clear();
+        mLightGrid.clear();
 
         // do an occasional cleanup for orphaned lights
         for (int i=0; i<2; ++i)
@@ -284,6 +295,17 @@ namespace SceneUtil
             }
         }
         return it->second;
+    }
+
+    const LightManager::LightGrid& LightManager::getLightGrid(osg::Camera* camera, const std::vector<LightSourceViewBound>& viewSpaceLights)
+    {
+        // The grid is built in view space, so it has to be rebuilt when the camera (and thus the view matrix) changes.
+        if (mLightGridCamera != camera || !mLightGrid.mBuilt)
+        {
+            mLightGridCamera = camera;
+            mLightGrid.build(viewSpaceLights);
+        }
+        return mLightGrid;
     }
 
     class DisableLight : public osg::StateAttribute
@@ -402,7 +424,8 @@ namespace SceneUtil
 
         // Possible optimizations:
         // - cull list of lights by the camera frustum
-        // - organize lights in a quad tree
+        // - lights are looked up through a 2D spatial grid (see LightGrid), which could be extended
+        //   to a full quad tree if the light count ever becomes large enough to warrant it
 
 
         // update light list if necessary
@@ -430,7 +453,14 @@ namespace SceneUtil
             transformBoundingSphere(mat, nodeBound);
 
             mLightList.clear();
-            for (unsigned int i=0; i<lights.size(); ++i)
+
+            // Query the spatial grid (built in view space) for the lights near this object
+            // instead of iterating over every light in the scene.
+            std::vector<unsigned int> candidateIndices;
+            mLightManager->getLightGrid(cv->getCurrentCamera(), lights).query(nodeBound, candidateIndices);
+
+            mLightList.reserve(candidateIndices.size());
+            for (unsigned int i : candidateIndices)
             {
                 const LightManager::LightSourceViewBound& l = lights[i];
 

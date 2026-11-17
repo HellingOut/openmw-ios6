@@ -1,9 +1,13 @@
 #ifndef OPENMW_COMPONENTS_SCENEUTIL_LIGHTMANAGER_H
 #define OPENMW_COMPONENTS_SCENEUTIL_LIGHTMANAGER_H
 
+#include <algorithm>
+#include <cmath>
+#include <cstdint>
 #include <map>
 #include <set>
 #include <unordered_map>
+#include <vector>
 
 #include <osg/Light>
 
@@ -129,6 +133,102 @@ namespace SceneUtil
 
         typedef std::vector<const LightSourceViewBound*> LightList;
 
+        /// Spatial grid for fast light candidate lookup.
+        /// Lights are placed into 2D cells (XZ plane) based on their view-space position.
+        /// Lights with radius > LARGE_LIGHT_THRESHOLD are placed in a separate large-lights list
+        /// to guarantee correctness without excessive cell queries.
+        struct LightGrid
+        {
+            static const float CELL_SIZE;
+            static const float LARGE_LIGHT_THRESHOLD;
+
+            struct Cell
+            {
+                std::vector<unsigned int> lightIndices;
+            };
+
+            std::unordered_map<uint64_t, Cell> mCells;
+            std::vector<unsigned int> mLargeLights;
+            bool mBuilt;
+
+            LightGrid() : mBuilt(false) {}
+
+            void clear()
+            {
+                mCells.clear();
+                mLargeLights.clear();
+                mBuilt = false;
+            }
+
+            /// Build the grid from the given view-space light bounds.
+            void build(const std::vector<LightSourceViewBound>& lights)
+            {
+                clear();
+                for (unsigned int i = 0; i < lights.size(); ++i)
+                {
+                    float radius = lights[i].mLightSource->getRadius();
+                    if (radius > LARGE_LIGHT_THRESHOLD)
+                    {
+                        mLargeLights.push_back(i);
+                        continue;
+                    }
+
+                    const osg::Vec3f& pos = lights[i].mViewBound.center();
+                    int cx = (int)std::floor(pos.x() / CELL_SIZE);
+                    int cz = (int)std::floor(pos.z() / CELL_SIZE);
+
+                    // Light may overlap into neighboring cells
+                    int cellSpan = (int)std::ceil(radius / CELL_SIZE);
+                    for (int dx = -cellSpan; dx <= cellSpan; ++dx)
+                        for (int dz = -cellSpan; dz <= cellSpan; ++dz)
+                            mCells[packCell(cx + dx, cz + dz)].lightIndices.push_back(i);
+                }
+                mBuilt = true;
+            }
+
+            /// Query the grid with an object's view-space bounding sphere.
+            /// @param outIndices Receives the candidate light indices, sorted and without duplicates.
+            void query(const osg::BoundingSphere& bound, std::vector<unsigned int>& outIndices) const
+            {
+                outIndices.clear();
+                const osg::Vec3f& center = bound.center();
+                float radius = bound.radius();
+
+                int cx = (int)std::floor(center.x() / CELL_SIZE);
+                int cz = (int)std::floor(center.z() / CELL_SIZE);
+
+                // Check enough cells to cover the object radius plus the max gridded light radius
+                int range = (int)std::ceil((radius + LARGE_LIGHT_THRESHOLD) / CELL_SIZE);
+                for (int dx = -range; dx <= range; ++dx)
+                    for (int dz = -range; dz <= range; ++dz)
+                    {
+                        auto it = mCells.find(packCell(cx + dx, cz + dz));
+                        if (it != mCells.end())
+                        {
+                            const std::vector<unsigned int>& indices = it->second.lightIndices;
+                            outIndices.insert(outIndices.end(), indices.begin(), indices.end());
+                        }
+                    }
+
+                // Always check large lights
+                outIndices.insert(outIndices.end(), mLargeLights.begin(), mLargeLights.end());
+
+                // A light may overlap several cells, so drop duplicate indices.
+                // Sorting also restores the order in which the lights were collected.
+                std::sort(outIndices.begin(), outIndices.end());
+                outIndices.erase(std::unique(outIndices.begin(), outIndices.end()), outIndices.end());
+            }
+
+        private:
+            static uint64_t packCell(int x, int z)
+            {
+                return ((uint64_t)(unsigned int)x << 32) | (unsigned int)z;
+            }
+        };
+
+        /// Get the view-space spatial grid for lights. Built lazily per camera per frame.
+        const LightGrid& getLightGrid(osg::Camera* camera, const std::vector<LightSourceViewBound>& viewSpaceLights);
+
         osg::ref_ptr<osg::StateSet> getLightListStateSet(const LightList& lightList, unsigned int frameNum);
 
     private:
@@ -137,6 +237,11 @@ namespace SceneUtil
 
         typedef std::vector<LightSourceViewBound> LightSourceViewBoundCollection;
         std::map<osg::observer_ptr<osg::Camera>, LightSourceViewBoundCollection> mLightsInViewSpace;
+
+        // Spatial grid of the lights in view space, used to quickly find the lights affecting an object.
+        // Rebuilt lazily whenever the camera changes or the lights are updated.
+        LightGrid mLightGrid;
+        osg::observer_ptr<osg::Camera> mLightGridCamera;
 
         // < Light list hash , StateSet >
         typedef std::unordered_map<size_t, osg::ref_ptr<osg::StateSet> > LightStateSetMap;
