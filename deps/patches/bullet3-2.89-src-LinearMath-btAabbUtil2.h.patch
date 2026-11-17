@@ -1,0 +1,81 @@
+diff --git a/bullet3-2.89/src/LinearMath/btAabbUtil2.h b/bullet3-2.89/src/LinearMath/btAabbUtil2.h
+--- a/bullet3-2.89/src/LinearMath/btAabbUtil2.h
++++ b/bullet3-2.89/src/LinearMath/btAabbUtil2.h
+@@ -19,6 +19,11 @@
+ #include "btVector3.h"
+ #include "btMinMax.h"
+ 
++// armv7 NEON path for the iOS port
++#if defined(BT_USE_NEON)
++#include <arm_neon.h>
++#endif
++
+ SIMD_FORCE_INLINE void AabbExpand(btVector3& aabbMin,
+ 								  btVector3& aabbMax,
+ 								  const btVector3& expansionMin,
+@@ -43,11 +48,20 @@
+ SIMD_FORCE_INLINE bool TestAabbAgainstAabb2(const btVector3& aabbMin1, const btVector3& aabbMax1,
+ 											const btVector3& aabbMin2, const btVector3& aabbMax2)
+ {
++#if defined(BT_USE_NEON)
++	// armv7 NEON path for the iOS port
++	const uint32x4_t rt = vandq_u32(vorrq_u32(vcgtq_f32(aabbMin1.mVec128, aabbMax2.mVec128),
++											  vcltq_f32(aabbMax1.mVec128, aabbMin2.mVec128)),
++									vreinterpretq_u32_s32(btvFFF0Mask));
++	const uint32x2_t rr = vorr_u32(vget_low_u32(rt), vget_high_u32(rt));
++	return ((vget_lane_u32(rr, 0) | vget_lane_u32(rr, 1)) == 0);
++#else
+ 	bool overlap = true;
+ 	overlap = (aabbMin1.getX() > aabbMax2.getX() || aabbMax1.getX() < aabbMin2.getX()) ? false : overlap;
+ 	overlap = (aabbMin1.getZ() > aabbMax2.getZ() || aabbMax1.getZ() < aabbMin2.getZ()) ? false : overlap;
+ 	overlap = (aabbMin1.getY() > aabbMax2.getY() || aabbMax1.getY() < aabbMin2.getY()) ? false : overlap;
+ 	return overlap;
++#endif
+ }
+ 
+ /// conservative test for overlap between triangle and aabb
+@@ -88,10 +102,30 @@
+ 								  btScalar lambda_max)
+ {
+ 	btScalar tmax, tymin, tymax, tzmin, tzmax;
++#if defined(BT_USE_NEON)
++	// armv7 NEON path for the iOS port. The two candidate bounds per axis are
++	// gathered with a lane-wise select on raySign, multiplied in one go, and
++	// the comparison/min-max chain below is kept in the original order so the
++	// returned branch and tmin stay bit-identical to the scalar version.
++	const float32x4_t d0 = vsubq_f32(bounds[0].mVec128, rayFrom.mVec128);
++	const float32x4_t d1 = vsubq_f32(bounds[1].mVec128, rayFrom.mVec128);
++	uint32x4_t sgn = vdupq_n_u32(0);
++	sgn = vsetq_lane_u32(raySign[0] ? 0xFFFFFFFFu : 0u, sgn, 0);
++	sgn = vsetq_lane_u32(raySign[1] ? 0xFFFFFFFFu : 0u, sgn, 1);
++	sgn = vsetq_lane_u32(raySign[2] ? 0xFFFFFFFFu : 0u, sgn, 2);
++	const float32x4_t lo = vmulq_f32(vbslq_f32(sgn, d1, d0), rayInvDirection.mVec128);
++	const float32x4_t hi = vmulq_f32(vbslq_f32(sgn, d0, d1), rayInvDirection.mVec128);
++
++	tmin = vgetq_lane_f32(lo, 0);
++	tmax = vgetq_lane_f32(hi, 0);
++	tymin = vgetq_lane_f32(lo, 1);
++	tymax = vgetq_lane_f32(hi, 1);
++#else
+ 	tmin = (bounds[raySign[0]].getX() - rayFrom.getX()) * rayInvDirection.getX();
+ 	tmax = (bounds[1 - raySign[0]].getX() - rayFrom.getX()) * rayInvDirection.getX();
+ 	tymin = (bounds[raySign[1]].getY() - rayFrom.getY()) * rayInvDirection.getY();
+ 	tymax = (bounds[1 - raySign[1]].getY() - rayFrom.getY()) * rayInvDirection.getY();
++#endif
+ 
+ 	if ((tmin > tymax) || (tymin > tmax))
+ 		return false;
+@@ -102,8 +136,13 @@
+ 	if (tymax < tmax)
+ 		tmax = tymax;
+ 
++#if defined(BT_USE_NEON)
++	tzmin = vgetq_lane_f32(lo, 2);
++	tzmax = vgetq_lane_f32(hi, 2);
++#else
+ 	tzmin = (bounds[raySign[2]].getZ() - rayFrom.getZ()) * rayInvDirection.getZ();
+ 	tzmax = (bounds[1 - raySign[2]].getZ() - rayFrom.getZ()) * rayInvDirection.getZ();
++#endif
+ 
+ 	if ((tmin > tzmax) || (tzmin > tmax))
+ 		return false;

@@ -81,6 +81,18 @@ iOS 8.4.1 installd rejects a top-level folder literally named `resources`.
 ## Port-specific source changes
 
 - `apps/openmw/main.cpp` — `SDL_main` entry point on iOS, bundle-relative cwd.
+- `deps/patches/bullet3-2.89-*.patch` — ARMv7 NEON siblings for the AABB hot
+  paths that Bullet only vectorises for SSE: `btDbvtAabbMm`
+  (`Contain`/`Intersect`/`Select`/`Merge`, i.e. the `btDbvtBroadphase` inner
+  loop) and `btAabbUtil2` (`TestAabbAgainstAabb2`, `btRayAabb2`).
+  `btVector3`/`btQuaternion`/`btMatrix3x3` already take Bullet's NEON path once
+  `BT_USE_DOUBLE_PRECISION` is off; `btTransform`, `btBoxBoxDetector` and the
+  axis-sweep broadphases remain scalar. Measured on the iPad 3,6 (ns/op,
+  scalar -> NEON): AABB-vs-AABB 30.0 -> 12.5, Dbvt `Intersect` 19.7 -> 9.3,
+  `Contain` 16.0 -> 9.2; ray-AABB is unchanged (36.1 -> 35.2) because its
+  early-out structure dominates. Results are bit-identical to the scalar
+  fallback (0 mismatches over 200k randomised cases per function, including
+  NaN, touching faces and degenerate boxes, verified on the device).
 - `components/nif/nifstream.hpp` — `skip()` reads and discards bytes instead of
   calling `istream::ignore()`. libc++ compares every byte against
   `traits_type::eof()`, and on Apple platforms `char` is signed, so a `0xFF`

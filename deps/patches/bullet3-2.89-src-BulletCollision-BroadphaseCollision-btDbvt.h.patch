@@ -1,0 +1,86 @@
+diff --git a/bullet3-2.89/src/BulletCollision/BroadphaseCollision/btDbvt.h b/bullet3-2.89/src/BulletCollision/BroadphaseCollision/btDbvt.h
+--- a/bullet3-2.89/src/BulletCollision/BroadphaseCollision/btDbvt.h
++++ b/bullet3-2.89/src/BulletCollision/BroadphaseCollision/btDbvt.h
+@@ -71,6 +71,11 @@
+ #include <emmintrin.h>
+ #endif
+ 
++// armv7 NEON path for the iOS port
++#if defined(BT_USE_NEON)
++#include <arm_neon.h>
++#endif
++
+ //
+ // Auto config and checks
+ //
+@@ -537,12 +542,22 @@
+ //
+ DBVT_INLINE bool btDbvtAabbMm::Contain(const btDbvtAabbMm& a) const
+ {
++#if defined(BT_USE_NEON)
++	// armv7 NEON path for the iOS port: force the unused w lane to "true" so
++	// the three live lanes can be folded with a plain AND.
++	const uint32x4_t ci = vbslq_u32(vreinterpretq_u32_s32(btvFFF0Mask),
++									vandq_u32(vcleq_f32(mi.mVec128, a.mi.mVec128),
++											  vcgeq_f32(mx.mVec128, a.mx.mVec128)),
++									vdupq_n_u32(0xFFFFFFFFu));
++	return ((vgetq_lane_u32(ci, 0) & vgetq_lane_u32(ci, 1) & vgetq_lane_u32(ci, 2)) != 0);
++#else
+ 	return ((mi.x() <= a.mi.x()) &&
+ 			(mi.y() <= a.mi.y()) &&
+ 			(mi.z() <= a.mi.z()) &&
+ 			(mx.x() >= a.mx.x()) &&
+ 			(mx.y() >= a.mx.y()) &&
+ 			(mx.z() >= a.mx.z()));
++#endif
+ }
+ 
+ //
+@@ -630,6 +645,15 @@
+ 	const int* pu((const int*)&rt);
+ #endif
+ 	return ((pu[0] | pu[1] | pu[2]) == 0);
++#elif defined(BT_USE_NEON)
++	// armv7 NEON path for the iOS port. This is the <= / >= conjunction (not
++	// the "any separation" form the SSE path uses) so NaN behaves like the
++	// scalar fallback: a NaN axis makes the whole test false.
++	const uint32x4_t ok = vandq_u32(vcleq_f32(a.mi.mVec128, b.mx.mVec128),
++									vcgeq_f32(a.mx.mVec128, b.mi.mVec128));
++	const uint32x4_t rt = vbslq_u32(vreinterpretq_u32_s32(btvFFF0Mask), ok,
++									vdupq_n_u32(0xFFFFFFFFu));
++	return ((vgetq_lane_u32(rt, 0) & vgetq_lane_u32(rt, 1) & vgetq_lane_u32(rt, 2)) != 0);
+ #else
+ 	return ((a.mi.x() <= b.mx.x()) &&
+ 			(a.mx.x() >= b.mi.x()) &&
+@@ -736,6 +760,17 @@
+ 	}
+ 	return (r[0] & 1);
+ #endif
++#elif defined(BT_USE_NEON)
++	// armv7 NEON path for the iOS port. The per-axis distances are summed in
++	// the same (x+y)+z order as Proximity() so the test stays exact.
++	const float32x4_t omi = vaddq_f32(o.mi.mVec128, o.mx.mVec128);
++	const float32x4_t da = vabsq_f32(vsubq_f32(vaddq_f32(a.mi.mVec128, a.mx.mVec128), omi));
++	const float32x4_t db = vabsq_f32(vsubq_f32(vaddq_f32(b.mi.mVec128, b.mx.mVec128), omi));
++	const float32x2_t sa = vpadd_f32(vget_low_f32(da), vget_low_f32(da));
++	const float32x2_t sb = vpadd_f32(vget_low_f32(db), vget_low_f32(db));
++	const btScalar pa = vget_lane_f32(sa, 0) + vget_lane_f32(vget_high_f32(da), 0);
++	const btScalar pb = vget_lane_f32(sb, 0) + vget_lane_f32(vget_high_f32(db), 0);
++	return (pa < pb ? 0 : 1);
+ #else
+ 	return (Proximity(o, a) < Proximity(o, b) ? 0 : 1);
+ #endif
+@@ -755,6 +790,13 @@
+ 	amx = _mm_max_ps(amx, bmx);
+ 	_mm_store_ps(r.mi, ami);
+ 	_mm_store_ps(r.mx, amx);
++#elif defined(BT_USE_NEON)
++	// armv7 NEON path for the iOS port. vbsl keeps the "a < b ? a : b" scalar
++	// semantics (including NaN operands) that vmin/vmax would not.
++	const uint32x4_t lt = vcltq_f32(a.mi.mVec128, b.mi.mVec128);
++	const uint32x4_t gt = vcgtq_f32(a.mx.mVec128, b.mx.mVec128);
++	r.mi.mVec128 = vbslq_f32(lt, a.mi.mVec128, b.mi.mVec128);
++	r.mx.mVec128 = vbslq_f32(gt, a.mx.mVec128, b.mx.mVec128);
+ #else
+ 	for (int i = 0; i < 3; ++i)
+ 	{

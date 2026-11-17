@@ -1,0 +1,24 @@
+diff --git a/bullet3-2.89/src/BulletCollision/BroadphaseCollision/btDbvt.cpp b/bullet3-2.89/src/BulletCollision/BroadphaseCollision/btDbvt.cpp
+--- a/bullet3-2.89/src/BulletCollision/BroadphaseCollision/btDbvt.cpp
++++ b/bullet3-2.89/src/BulletCollision/BroadphaseCollision/btDbvt.cpp
+@@ -41,6 +41,10 @@
+ 	ATTRIBUTE_ALIGNED16(char locals[sizeof(btDbvtAabbMm)]);
+ 	btDbvtVolume* ptr = (btDbvtVolume*)locals;
+ 	btDbvtVolume& res = *ptr;
++#elif defined(BT_USE_NEON)
++	// armv7 NEON path for the iOS port: vld1/vst1 tolerate any alignment, so
++	// the aligned stack buffer the SSE path needs is unnecessary here.
++	btDbvtVolume res;
+ #else
+ 	btDbvtVolume res;
+ #endif
+@@ -304,6 +308,9 @@
+ 	btDbvtVolume* ptr = (btDbvtVolume*)locals;
+ 	btDbvtVolume& volume = *ptr;
+ 	volume = leaves[0]->volume;
++#elif defined(BT_USE_NEON)
++	// armv7 NEON path for the iOS port (see merge() above)
++	btDbvtVolume volume = leaves[0]->volume;
+ #else
+ 	btDbvtVolume volume = leaves[0]->volume;
+ #endif
