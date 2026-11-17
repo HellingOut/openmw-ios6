@@ -91,7 +91,24 @@ public:
 
     NIFStream (NIFFile * file, Files::IStreamPtr inp): inp (inp), file (file) {}
 
-    void skip(size_t size) { inp->ignore(size); }
+    void skip(size_t size)
+    {
+        // Do NOT use istream::ignore() here. libc++ compares each byte against
+        // traits_type::eof(); with signed char (the Apple ABI) a 0xFF byte maps
+        // to -1, i.e. equal to eof(), so ignore() stops after one byte. NIF data
+        // contains such bytes (NiSkinData's "no NiSkinPartition" link is
+        // 0xFFFFFFFF), which silently desynchronised the record stream by 3
+        // bytes and made the rest of the file parse as garbage: "Record number
+        // N out of M is blank", or "Found no root nodes". Read and discard
+        // instead, which is portable and byte-exact.
+        char buf[512];
+        while (size > 0)
+        {
+            const size_t chunk = size < sizeof(buf) ? size : sizeof(buf);
+            inp->read(buf, static_cast<std::streamsize>(chunk));
+            size -= chunk;
+        }
+    }
 
     char getChar()
     {

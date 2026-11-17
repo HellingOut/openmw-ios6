@@ -12,11 +12,14 @@ namespace MWPhysics
     HeightField::HeightField(const float* heights, int x, int y, float triSize, float sqrtVerts, float minH, float maxH, const osg::Object* holdObject)
     {
         // btHeightfieldTerrainShape reads PHY_FLOAT height data through a `const btScalar*`
-        // (see BulletCollision/CollisionShapes/btHeightfieldTerrainShape.h). When Bullet is built with
-        // BT_USE_DOUBLE_PRECISION, btScalar is double, so passing the game's float array makes Bullet read
-        // 8 bytes per vertex and step over every second height: the collision mesh becomes garbage, the
-        // player falls through the terrain, and degenerate "contacts" can throw the actor far away.
-        // Convert the data to btScalar first (a no-op when Bullet is built single-precision).
+        // (see BulletCollision/CollisionShapes/btHeightfieldTerrainShape.h), so the buffer
+        // must hold btScalar elements, not float. Copying through static_cast<btScalar> is
+        // what keeps the shape correct at either precision: with double-precision Bullet it
+        // widens each height (reading the game's float array directly would make Bullet read
+        // 8 bytes per vertex and step over every second height), and under the now-default
+        // single-precision build the cast is a no-op.
+        // Getting this wrong makes the collision mesh garbage: the player falls through all
+        // terrain, and the degenerate "contacts" it produces can throw the actor far away.
         const int numVerts = static_cast<int>(sqrtVerts) * static_cast<int>(sqrtVerts);
         mHeights.resize(numVerts);
         for (int i = 0; i < numVerts; ++i)

@@ -49,6 +49,18 @@ Dependencies built by `make deps`:
 The small portability patches live in `deps/patches`; `make deps` applies them
 automatically and is safe to re-run.
 
+### Bullet precision
+
+- Default is **single precision**: `BT_DOUBLE_PRECISION=0` in the Makefile,
+  `USE_DOUBLE_PRECISION=OFF` for the Bullet build (`btScalar` is `float`).
+- This matches the engine, which is `float` throughout (`osg::Vec3f`,
+  `ESM::Position`), and on armv7 it enables Bullet's NEON `btVector3` SIMD path.
+- Double precision build: `BT_DOUBLE_PRECISION=1 make deps`, then `make`.
+- The `before-all` step checks `libLinearMath.a` for the
+  `btConvexHullComputer::compute()` mangling (`...idd` for double, `...iff` for
+  float) and stops the build with an error if the archives and the compile
+  flags disagree. Re-run `BT_DOUBLE_PRECISION=0 make deps` (or `=1`) to fix it.
+
 ## Layout in the application bundle
 
 ```
@@ -69,14 +81,28 @@ iOS 8.4.1 installd rejects a top-level folder literally named `resources`.
 ## Port-specific source changes
 
 - `apps/openmw/main.cpp` — `SDL_main` entry point on iOS, bundle-relative cwd.
-- `apps/openmw/mwphysics/heightfield.cpp` — terrain heights are converted to
-  `btScalar` before being handed to `btHeightfieldTerrainShape`. Bullet 2.89
-  declares that buffer as `const btScalar*`, so with `BT_USE_DOUBLE_PRECISION`
-  (which this build uses) it read 8 bytes per vertex out of the game's `float`
-  array, stepping over every second height. The resulting collision mesh was
-  garbage: the player fell through all terrain, and the degenerate "contacts" it
-  produced could throw the actor millions of units away (only the skybox
-  visible). Single-precision Bullet, as used by most desktop builds, hides this.
+- `components/nif/nifstream.hpp` — `skip()` reads and discards bytes instead of
+  calling `istream::ignore()`. libc++ compares every byte against
+  `traits_type::eof()`, and on Apple platforms `char` is signed, so a `0xFF`
+  byte compares equal to `eof()` (`-1`) and `ignore()` stops after a single
+  byte. Morrowind NIFs contain such bytes — `NiSkinData`'s "no NiSkinPartition"
+  link is `0xFFFFFFFF` — so the record stream silently desynchronised by three
+  bytes. Every skinned mesh then failed to load with
+  `Record number N out of M is blank` (or `Found no root nodes`): the player
+  body, clothing and the first-person mesh all fell back to `marker_error.nif`,
+  and starting a new game aborted. Linux/libstdc++ is unaffected because it maps
+  bytes through `unsigned char`.
+- `apps/openmw/mwphysics/heightfield.cpp` — terrain heights are copied into a
+  `std::vector<btScalar>` before being handed to `btHeightfieldTerrainShape`.
+  Bullet 2.89 declares that buffer as `const btScalar*` but the data as
+  `PHY_FLOAT`, so the element type must be `btScalar`, not `float`. The copy is
+  what makes the shape correct at either precision: with double-precision Bullet
+  it widens the game's `float` heights instead of letting Bullet read 8 bytes
+  per vertex and step over every second one, and under the default
+  single-precision build the cast is a no-op. Reading the buffer at the wrong
+  stride produced a garbage collision mesh: the player fell through all terrain,
+  and the degenerate "contacts" it produced could throw the actor millions of
+  units away (only the skybox visible).
 - `apps/openmw/mwphysics/movementsolver.cpp` — the "unstuck" separation offset is
   range-checked before it is applied, so an absurd contact point can no longer be
   amplified into the actor's position.
@@ -161,9 +187,12 @@ Because `debugserver` on iOS 8 refuses extra program arguments, the
 therefore also accepted from the environment, so a benchmark can jump straight
 into a new game:
 
-```
+```sh
 ssh mobile@iPadHelling
-OPENMW_SKIP_MENU=1 $HOME/debugserver *:1234 $(find $HOME/Containers/Bundle/Application/ -name "OpenMW.app")/openmw
+# iOS 6 keeps bundles under /var/mobile/Applications/<UUID>/; iOS 8+ moved them
+# to $HOME/Containers/Bundle/Application/<UUID>/. Resolve both roots.
+OPENMW_SKIP_MENU=1 $HOME/debugserver *:1234 \
+  $(find /var/mobile/Applications $HOME/Containers/Bundle/Application -name "OpenMW.app" 2>/dev/null)/openmw
 ```
 
 ### Render resolution: `ios render scale`
@@ -317,10 +346,15 @@ migrated.
 
 ## Debugging
 
-`debugserver` is available on the test device:
+`debugserver` must be present at `$HOME/debugserver` on the device. iOS does not
+ship it; copy it from the `DeveloperDiskImage` matching the firmware. The bundle
+lives under `/var/mobile/Applications/<UUID>/OpenMW.app` on iOS 6 and under
+`$HOME/Containers/Bundle/Application/<UUID>/OpenMW.app` on iOS 8+, so resolve it
+with `find` rather than hardcoding the UUID:
 
 ```sh
-$HOME/debugserver *:1234 $HOME/Containers/Bundle/Application/*/OpenMW.app/openmw
+$HOME/debugserver *:1234 \
+  $(find /var/mobile/Applications $HOME/Containers/Bundle/Application -name "OpenMW.app" 2>/dev/null)/openmw
 ```
 
 then on the host:

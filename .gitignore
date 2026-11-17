@@ -13,6 +13,7 @@ prebuilt
 /deps/*
 !/deps/apply-patches.sh
 !/deps/build-*.sh
+!/scripts/build-*.sh
 !/deps/env.sh
 !/deps/patches/
 !/deps/patches/**
