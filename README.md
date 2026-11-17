@@ -204,7 +204,7 @@ ssh mobile@iPadHelling
 # iOS 6 keeps bundles under /var/mobile/Applications/<UUID>/; iOS 8+ moved them
 # to $HOME/Containers/Bundle/Application/<UUID>/. Resolve both roots.
 OPENMW_SKIP_MENU=1 $HOME/debugserver *:1234 \
-  $(find /var/mobile/Applications $HOME/Containers/Bundle/Application -name "OpenMW.app" 2>/dev/null)/openmw
+  $(find /var/mobile/Applications $HOME/Containers/Bundle/Application -name "OpenMW.app" 2>/dev/null)
 ```
 
 ### Render resolution: `ios render scale`
@@ -366,8 +366,15 @@ with `find` rather than hardcoding the UUID:
 
 ```sh
 $HOME/debugserver *:1234 \
-  $(find /var/mobile/Applications $HOME/Containers/Bundle/Application -name "OpenMW.app" 2>/dev/null)/openmw
+  $(find /var/mobile/Applications $HOME/Containers/Bundle/Application -name "OpenMW.app" 2>/dev/null)
 ```
+
+Pass the `.app` **directory**, not the executable inside it. Given the directory,
+`debugserver` launches the bundle as a UI application; given the executable it
+starts a bare, non-foreground process that iOS suspends after a few seconds of
+CPU, which looks exactly like a hang during `Loading content file
+Morrowind.esm` (the log simply stops). `debugserver` also needs root for its
+task port — as `mobile` it exits silently and never listens.
 
 then on the host:
 
