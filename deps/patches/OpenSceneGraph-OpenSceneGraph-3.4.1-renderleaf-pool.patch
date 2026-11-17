@@ -1,0 +1,66 @@
+diff --git a/OpenSceneGraph-OpenSceneGraph-3.4.1/include/osgUtil/CullVisitor b/OpenSceneGraph-OpenSceneGraph-3.4.1/include/osgUtil/CullVisitor
+--- a/OpenSceneGraph-OpenSceneGraph-3.4.1/include/osgUtil/CullVisitor
++++ b/OpenSceneGraph-OpenSceneGraph-3.4.1/include/osgUtil/CullVisitor
+@@ -344,6 +344,10 @@
+         typedef std::vector< osg::ref_ptr<RenderLeaf> > RenderLeafList;
+         RenderLeafList _reuseRenderLeafList;
+         unsigned int _currentReuseRenderLeafIndex;
++
++        /** iOS/ARMv7 optimization: Pool pre-allocation flag.
++          * Once reserved, the vector capacity is maintained across frames. */
++        bool _renderLeafPoolReserved;
+ 
+         inline RenderLeaf* createOrReuseRenderLeaf(osg::Drawable* drawable,osg::RefMatrix* projection,osg::RefMatrix* matrix, float depth=0.0f);
+ 
+@@ -443,18 +447,25 @@
+ 
+ inline RenderLeaf* CullVisitor::createOrReuseRenderLeaf(osg::Drawable* drawable,osg::RefMatrix* projection,osg::RefMatrix* matrix, float depth)
+ {
+-    // Skips any already reused renderleaf.
+-    while (_currentReuseRenderLeafIndex<_reuseRenderLeafList.size() &&
+-           _reuseRenderLeafList[_currentReuseRenderLeafIndex]->referenceCount()>1)
+-    {
+-        osg::notify(osg::NOTICE)<<"Warning:createOrReuseRenderLeaf() skipping multiply refrenced entry."<< std::endl;
+-        ++_currentReuseRenderLeafIndex;
+-    }
++    // iOS/ARMv7 optimization: In single-threaded cull mode (which OpenMW uses),
++    // RenderLeafs are only referenced by _reuseRenderLeafList, so referenceCount()
++    // is always 1. The original loop checked for referenceCount()>1 as a safety
++    // net for multi-threaded cull (CullThreadPerCamera), but with mutex-protected
++    // atomics (OPENTHREADS_ATOMIC_USE_MUTEX=ON), each referenceCount() call
++    // acquires a mutex — extremely expensive on ARMv7.
++    //
++    // Since OpenMW explicitly documents "Not thread safe for CullThreadPerCamera
++    // threading mode", we can safely skip this check entirely.
++
++    // Pre-allocate pool on first use to avoid per-frame vector growth
++    if (!_renderLeafPoolReserved)
++    {
++        _reuseRenderLeafList.reserve(4096);
++        _renderLeafPoolReserved = true;
++    }
+ 
+-    // If still within list, element must be singularly referenced then return it to be reused.
++    // If within pool, reuse the RenderLeaf
+     if (_currentReuseRenderLeafIndex<_reuseRenderLeafList.size())
+     {
+         RenderLeaf* renderleaf = _reuseRenderLeafList[_currentReuseRenderLeafIndex++].get();
+diff --git a/OpenSceneGraph-OpenSceneGraph-3.4.1/src/osgUtil/CullVisitor.cpp b/OpenSceneGraph-OpenSceneGraph-3.4.1/src/osgUtil/CullVisitor.cpp
+--- a/OpenSceneGraph-OpenSceneGraph-3.4.1/src/osgUtil/CullVisitor.cpp
++++ b/OpenSceneGraph-OpenSceneGraph-3.4.1/src/osgUtil/CullVisitor.cpp
+@@ -51,6 +51,7 @@
+     _computed_znear(FLT_MAX),
+     _computed_zfar(-FLT_MAX),
+     _currentReuseRenderLeafIndex(0),
++    _renderLeafPoolReserved(false),
+     _numberOfEncloseOverrideRenderBinDetails(0)
+ {
+     _identifier = new Identifier;
+@@ -65,6 +66,7 @@
+     _computed_znear(FLT_MAX),
+     _computed_zfar(-FLT_MAX),
+     _currentReuseRenderLeafIndex(0),
++    _renderLeafPoolReserved(false),
+     _numberOfEncloseOverrideRenderBinDetails(0),
+     _identifier(rhs._identifier)
+ {

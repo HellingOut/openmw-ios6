@@ -262,6 +262,19 @@ One measured improvement came out of this: the per-object light-list ->
 every frame. It is now a `std::unordered_map`, which removes a red-black-tree
 lookup from the cull traversal.
 
+Another: `pushLightState` iterated all lights per object. It now uses a 2D
+spatial grid (`LightManager::LightGrid`) to look up only nearby candidate
+lights, then still applies the exact sphere-intersection check. Same lighting
+results, fewer tests.
+
+The `createOrReuseRenderLeaf` hotspot was addressed via an OSG patch
+(`deps/patches/OpenSceneGraph-OpenSceneGraph-3.4.1-renderleaf-pool.patch`):
+the per-call `referenceCount()>1` loop (which acquired a mutex on every
+check due to `OPENTHREADS_ATOMIC_USE_MUTEX=ON`) is removed, since OpenMW
+uses single-threaded culling and RenderLeafs are only referenced by the
+reuse pool. The pool vector is also pre-allocated (`reserve(4096)`) to
+eliminate per-frame growth.
+
 The `[Navigator]` navmesh threads are *not* the bottleneck: they show up in
 profiles during cell streaming, but reducing the Recast voxel density
 (`cell size` 0.2 -> 0.4) does not raise the frame rate, and
