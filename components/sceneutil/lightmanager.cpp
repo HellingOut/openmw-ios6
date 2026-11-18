@@ -169,7 +169,8 @@ namespace SceneUtil
     };
 
     LightManager::LightManager()
-        : mLightGridCamera(nullptr)
+        : mCachedViewSpaceCamera(nullptr)
+        , mLightGridCamera(nullptr)
         , mStartLight(0)
         , mLightingMask(~0u)
     {
@@ -180,6 +181,7 @@ namespace SceneUtil
 
     LightManager::LightManager(const LightManager &copy, const osg::CopyOp &copyop)
         : osg::Group(copy, copyop)
+        , mCachedViewSpaceCamera(nullptr)
         , mLightGridCamera(nullptr)
         , mStartLight(copy.mStartLight)
         , mLightingMask(copy.mLightingMask)
@@ -200,6 +202,7 @@ namespace SceneUtil
     void LightManager::update()
     {
         mLights.clear();
+        mCachedViewSpaceCamera = nullptr;
         mLightsInViewSpace.clear();
         mLightGrid.clear();
 
@@ -273,14 +276,13 @@ namespace SceneUtil
         return mLights;
     }
 
-    const std::vector<LightManager::LightSourceViewBound>& LightManager::getLightsInViewSpace(osg::Camera *camera, const osg::RefMatrix* viewMatrix)
+    const std::vector<LightManager::LightSourceViewBound>& LightManager::getLightsInViewSpace(osg::Camera* camera, const osg::RefMatrix* viewMatrix)
     {
-        osg::observer_ptr<osg::Camera> camPtr (camera);
-        std::map<osg::observer_ptr<osg::Camera>, LightSourceViewBoundCollection>::iterator it = mLightsInViewSpace.find(camPtr);
-
-        if (it == mLightsInViewSpace.end())
+        // iOS optimization: single-camera cache. If camera changed, rebuild.
+        if (mCachedViewSpaceCamera != camera)
         {
-            it = mLightsInViewSpace.insert(std::make_pair(camPtr, LightSourceViewBoundCollection())).first;
+            mCachedViewSpaceCamera = camera;
+            mLightsInViewSpace.clear();
 
             for (std::vector<LightSourceTransform>::iterator lightIt = mLights.begin(); lightIt != mLights.end(); ++lightIt)
             {
@@ -291,10 +293,10 @@ namespace SceneUtil
                 LightSourceViewBound l;
                 l.mLightSource = lightIt->mLightSource;
                 l.mViewBound = viewBound;
-                it->second.push_back(l);
+                mLightsInViewSpace.push_back(l);
             }
         }
-        return it->second;
+        return mLightsInViewSpace;
     }
 
     const LightManager::LightGrid& LightManager::getLightGrid(osg::Camera* camera, const std::vector<LightSourceViewBound>& viewSpaceLights)

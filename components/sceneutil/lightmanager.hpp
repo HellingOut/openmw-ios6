@@ -235,8 +235,11 @@ namespace SceneUtil
         // Lights collected from the scene graph. Only valid during the cull traversal.
         std::vector<LightSourceTransform> mLights;
 
+        // iOS optimization: single-camera cache instead of std::map lookup.
+        // OpenMW iOS uses one primary camera, so map overhead is unnecessary.
         typedef std::vector<LightSourceViewBound> LightSourceViewBoundCollection;
-        std::map<osg::observer_ptr<osg::Camera>, LightSourceViewBoundCollection> mLightsInViewSpace;
+        osg::Camera* mCachedViewSpaceCamera;
+        LightSourceViewBoundCollection mLightsInViewSpace;
 
         // Spatial grid of the lights in view space, used to quickly find the lights affecting an object.
         // Rebuilt lazily whenever the camera changes or the lights are updated.
