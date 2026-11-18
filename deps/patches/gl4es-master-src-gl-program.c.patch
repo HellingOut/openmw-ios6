@@ -1,0 +1,25 @@
+--- a/gl4es-master/src/gl/program.c
++++ b/gl4es-master/src/gl/program.c
+@@ -811,6 +811,22 @@
+ void APIENTRY_GL4ES gl4es_glUseProgram(GLuint program) {
+     DBG(printf("glUseProgram(%d) old=%d\n", program, glstate->glsl->program);)
+     PUSH_IF_COMPILING(glUseProgram);
++#if defined(__APPLE__) && !defined(GL4ES_NO_IOS_FASTPATH)
++    /* Switching to the program that is already current is a no-op.  The
++     * lookup below is a khash probe plus a link/validity check, so avoid it
++     * for the very common "same shader again" case. */
++    if(glstate->glsl->program == program) {
++        if(program == 0) {
++            if(!glstate->glsl->glprogram) {
++                noerrorShim();
++                return;
++            }
++        } else if(glstate->glsl->glprogram) {
++            noerrorShim();
++            return;
++        }
++    }
++#endif
+     if(program==0) {
+         glstate->glsl->program=0;
+         glstate->glsl->glprogram=NULL;

@@ -1,28 +1,24 @@
 diff --git a/OpenSceneGraph-OpenSceneGraph-3.4.1/include/osgUtil/CullVisitor b/OpenSceneGraph-OpenSceneGraph-3.4.1/include/osgUtil/CullVisitor
 --- a/OpenSceneGraph-OpenSceneGraph-3.4.1/include/osgUtil/CullVisitor
 +++ b/OpenSceneGraph-OpenSceneGraph-3.4.1/include/osgUtil/CullVisitor
-@@ -344,6 +344,10 @@
-         typedef std::vector< osg::ref_ptr<RenderLeaf> > RenderLeafList;
+@@ -345,6 +345,10 @@
          RenderLeafList _reuseRenderLeafList;
          unsigned int _currentReuseRenderLeafIndex;
-+
+ 
 +        /** iOS/ARMv7 optimization: Pool pre-allocation flag.
 +          * Once reserved, the vector capacity is maintained across frames. */
 +        bool _renderLeafPoolReserved;
- 
++
          inline RenderLeaf* createOrReuseRenderLeaf(osg::Drawable* drawable,osg::RefMatrix* projection,osg::RefMatrix* matrix, float depth=0.0f);
  
-@@ -443,18 +447,25 @@
+         unsigned int _numberOfEncloseOverrideRenderBinDetails;
+@@ -443,15 +447,24 @@
  
  inline RenderLeaf* CullVisitor::createOrReuseRenderLeaf(osg::Drawable* drawable,osg::RefMatrix* projection,osg::RefMatrix* matrix, float depth)
  {
 -    // Skips any already reused renderleaf.
 -    while (_currentReuseRenderLeafIndex<_reuseRenderLeafList.size() &&
 -           _reuseRenderLeafList[_currentReuseRenderLeafIndex]->referenceCount()>1)
--    {
--        osg::notify(osg::NOTICE)<<"Warning:createOrReuseRenderLeaf() skipping multiply refrenced entry."<< std::endl;
--        ++_currentReuseRenderLeafIndex;
--    }
 +    // iOS/ARMv7 optimization: In single-threaded cull mode (which OpenMW uses),
 +    // RenderLeafs are only referenced by _reuseRenderLeafList, so referenceCount()
 +    // is always 1. The original loop checked for referenceCount()>1 as a safety
@@ -35,10 +31,12 @@ diff --git a/OpenSceneGraph-OpenSceneGraph-3.4.1/include/osgUtil/CullVisitor b/O
 +
 +    // Pre-allocate pool on first use to avoid per-frame vector growth
 +    if (!_renderLeafPoolReserved)
-+    {
+     {
+-        osg::notify(osg::NOTICE)<<"Warning:createOrReuseRenderLeaf() skipping multiply refrenced entry."<< std::endl;
+-        ++_currentReuseRenderLeafIndex;
 +        _reuseRenderLeafList.reserve(4096);
 +        _renderLeafPoolReserved = true;
-+    }
+     }
  
 -    // If still within list, element must be singularly referenced then return it to be reused.
 +    // If within pool, reuse the RenderLeaf
@@ -48,7 +46,7 @@ diff --git a/OpenSceneGraph-OpenSceneGraph-3.4.1/include/osgUtil/CullVisitor b/O
 diff --git a/OpenSceneGraph-OpenSceneGraph-3.4.1/src/osgUtil/CullVisitor.cpp b/OpenSceneGraph-OpenSceneGraph-3.4.1/src/osgUtil/CullVisitor.cpp
 --- a/OpenSceneGraph-OpenSceneGraph-3.4.1/src/osgUtil/CullVisitor.cpp
 +++ b/OpenSceneGraph-OpenSceneGraph-3.4.1/src/osgUtil/CullVisitor.cpp
-@@ -51,6 +51,7 @@
+@@ -52,6 +52,7 @@
      _computed_znear(FLT_MAX),
      _computed_zfar(-FLT_MAX),
      _currentReuseRenderLeafIndex(0),
@@ -56,7 +54,7 @@ diff --git a/OpenSceneGraph-OpenSceneGraph-3.4.1/src/osgUtil/CullVisitor.cpp b/O
      _numberOfEncloseOverrideRenderBinDetails(0)
  {
      _identifier = new Identifier;
-@@ -65,6 +66,7 @@
+@@ -66,6 +67,7 @@
      _computed_znear(FLT_MAX),
      _computed_zfar(-FLT_MAX),
      _currentReuseRenderLeafIndex(0),

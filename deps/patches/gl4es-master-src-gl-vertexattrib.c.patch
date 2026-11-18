@@ -1,0 +1,18 @@
+--- a/gl4es-master/src/gl/vertexattrib.c
++++ b/gl4es-master/src/gl/vertexattrib.c
+@@ -29,6 +29,15 @@
+     vertexattrib_t *v = &glstate->vao->vertexattrib[index];
+     noerrorShim();
+     if(stride==0) stride=((size==GL_BGRA)?4:size)*gl_sizeof(type);
++#if defined(__APPLE__) && !defined(GL4ES_NO_IOS_FASTPATH)
++    /* Re-specifying an attribute with exactly the same layout is a no-op.
++     * OSG re-declares every array on each geometry switch. */
++    if(v->enabled && v->size == size && v->type == type
++        && v->normalized == (normalized?1:0) && !v->integer
++        && v->stride == stride && v->pointer == pointer
++        && v->buffer == glstate->vao->vertex)
++        return;
++#endif
+     v->size = size;
+     v->type = type;
+     v->normalized = normalized;

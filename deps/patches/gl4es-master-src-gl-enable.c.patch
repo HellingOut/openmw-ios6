@@ -1,0 +1,46 @@
+--- a/gl4es-master/src/gl/enable.c
++++ b/gl4es-master/src/gl/enable.c
+@@ -300,6 +300,23 @@
+             cap = GL_TEXTURE_STREAM_IMG;
+     }
+ #endif
++#if defined(__APPLE__) && !defined(GL4ES_NO_IOS_FASTPATH)
++    /* Depth test / blend / cull face toggles dominate the state traffic of
++     * the OSG scene graph.  proxy_glEnable() already avoids the driver call
++     * when the value is unchanged; answer those calls before the loader
++     * resolution and the big switch. */
++    switch(cap) {
++        case GL_DEPTH_TEST:
++            if(glstate->enable.depth_test) { noerrorShim(); return; }
++            break;
++        case GL_BLEND:
++            if(glstate->enable.blend) { noerrorShim(); return; }
++            break;
++        case GL_CULL_FACE:
++            if(glstate->enable.cull_face) { noerrorShim(); return; }
++            break;
++    }
++#endif
+     LOAD_GLES(glEnable);
+     proxy_glEnable(cap, true, gles_glEnable);
+ }
+@@ -321,6 +338,19 @@
+             cap = GL_TEXTURE_STREAM_IMG;
+     }
+ #endif
++#if defined(__APPLE__) && !defined(GL4ES_NO_IOS_FASTPATH)
++    switch(cap) {
++        case GL_DEPTH_TEST:
++            if(!glstate->enable.depth_test) { noerrorShim(); return; }
++            break;
++        case GL_BLEND:
++            if(!glstate->enable.blend) { noerrorShim(); return; }
++            break;
++        case GL_CULL_FACE:
++            if(!glstate->enable.cull_face) { noerrorShim(); return; }
++            break;
++    }
++#endif
+     LOAD_GLES(glDisable);
+     proxy_glEnable(cap, false, gles_glDisable);
+ }

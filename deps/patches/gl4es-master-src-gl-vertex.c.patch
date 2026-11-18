@@ -1,0 +1,185 @@
+--- a/gl4es-master/src/gl/drawing.c
++++ b/gl4es-master/src/gl/drawing.c
+@@ -287,10 +287,182 @@
+     return len+1;  // length is max(indices) + 1 !
+ }
+ 
++#if defined(__APPLE__) && !defined(GL4ES_NO_IOS_FASTPATH)
++#define GL4ES_IOS_FASTPATH 1
++#endif
++
++#ifdef GL4ES_IOS_FASTPATH
++/* iOS/PowerVR direct draw fast path.
++ *
++ * OSG/OpenMW submit huge numbers of tightly packed
++ * GL_TRIANGLES / GL_UNSIGNED_SHORT draws from client arrays.  The generic
++ * path below sends every one of them through fpe_glDrawElements() ->
++ * realize_glenv(), which rebuilds the whole fixed-function environment
++ * (program selection, uniform sync, attribute upload) before the draw.
++ *
++ * When the vertex layout is the canonical GL4ES one and the environment has
++ * already been realized, the same draw can be issued directly: push the
++ * standard attribute pointers and call glDrawElements().
++ *
++ * Every condition below is a plain field comparison; the first deviation
++ * returns 0 and the caller continues with the untouched general path.
++ */
++static int ios_try_fast_draw_elements(GLenum mode, GLsizei count,
++                                      const GLushort *sindices,
++                                      const GLuint *iindices,
++                                      int instancecount) {
++    static int enabled = -1;
++    if(enabled < 0)
++        enabled = (getenv("LIBGL_NOIOSFASTPATH") == NULL);
++    if(!enabled)
++        return 0;
++    /* ES2+ only: the ES1.1 path has a completely different attribute model. */
++    if(hardext.esversion == 1)
++        return 0;
++    if(mode != GL_TRIANGLES || instancecount != 1)
++        return 0;
++    if(!sindices || iindices || count <= 0)
++        return 0;
++    if(glstate->list.active || glstate->list.pending || glstate->list.compiling)
++        return 0;
++    if(glstate->render_mode == GL_SELECT)
++        return 0;
++    if(glstate->polygon_mode != GL_FILL)
++        return 0;
++    /* Custom GLSL programs define their own attribute layout, and the fixed
++     * function environment must be current and already bound for the direct
++     * attribute indices to mean anything. */
++    if(!glstate->glsl || glstate->glsl->program != 0)
++        return 0;
++    if(!glstate->fpe || !glstate->gleshard)
++        return 0;
++    if(glstate->gleshard->program != glstate->fpe->prog)
++        return 0;
++    if(glstate->fpe_bound_changed)
++        return 0;
++    /* Client arrays only: no element or array buffer objects. */
++    if(glstate->vao->vertex || glstate->vao->elements || glstate->vao->locked)
++        return 0;
++    if(glstate->vao->maxtex > 1)
++        return 0;
++
++    vertexattrib_t *v = &glstate->vao->vertexattrib[ATT_VERTEX];
++    if(!v->enabled || v->buffer || v->real_buffer || v->integer || !v->pointer)
++        return 0;
++    if(v->type != GL_FLOAT || v->size < 2 || v->size > 4)
++        return 0;
++    if(v->stride != v->size * (GLsizei)sizeof(GLfloat))
++        return 0;
++
++    vertexattrib_t *n = &glstate->vao->vertexattrib[ATT_NORMAL];
++    if(n->enabled) {
++        if(n->buffer || n->real_buffer || n->integer || !n->pointer)
++            return 0;
++        if(n->type != GL_FLOAT || n->size != 3)
++            return 0;
++        if(n->stride != 3 * (GLsizei)sizeof(GLfloat))
++            return 0;
++    }
++
++    vertexattrib_t *c = &glstate->vao->vertexattrib[ATT_COLOR];
++    if(c->enabled) {
++        if(c->buffer || c->real_buffer || c->integer || !c->pointer)
++            return 0;
++        if(c->size != 4)
++            return 0;
++        if(c->type == GL_FLOAT) {
++            if(c->stride != 4 * (GLsizei)sizeof(GLfloat))
++                return 0;
++        } else if(c->type == GL_UNSIGNED_BYTE) {
++            if(!c->normalized || c->stride != 4)
++                return 0;
++        } else
++            return 0;
++    }
++
++    vertexattrib_t *t = &glstate->vao->vertexattrib[ATT_MULTITEXCOORD0];
++    if(t->enabled) {
++        if(t->buffer || t->real_buffer || t->integer || !t->pointer)
++            return 0;
++        if(t->type != GL_FLOAT || t->size != 2)
++            return 0;
++        if(t->stride != 2 * (GLsizei)sizeof(GLfloat))
++            return 0;
++        if(!IS_TEX2D(glstate->enable.texture[0]))
++            return 0;
++        if(glstate->enable.texgen_s[0] || glstate->enable.texgen_t[0]
++            || glstate->enable.texgen_r[0] || glstate->enable.texgen_q[0])
++            return 0;
++    }
++
++    /* Anything else enabled (secondary colour, fog coord, extra texture
++     * units, generic attributes) needs the general environment update. */
++    for(int i = 0; i < hardext.maxvattrib; ++i) {
++        if(!glstate->vao->vertexattrib[i].enabled)
++            continue;
++        if(i == ATT_VERTEX || i == ATT_NORMAL || i == ATT_COLOR
++            || i == ATT_MULTITEXCOORD0)
++            continue;
++        return 0;
++    }
++
++    LOAD_GLES(glDrawElements);
++    LOAD_GLES2(glVertexAttribPointer);
++    LOAD_GLES2(glEnableVertexAttribArray);
++    LOAD_GLES2(glDisableVertexAttribArray);
++
++    /* Drop attributes enabled by an earlier draw that this layout does not
++     * use, so the hardware state mirrors glstate->vao. */
++    for(int i = 0; i < hardext.maxvattrib; ++i) {
++        vertexattrib_t *s = &glstate->gleshard->vertexattrib[i];
++        if(s->enabled && i != ATT_VERTEX && i != ATT_NORMAL && i != ATT_COLOR
++            && i != ATT_MULTITEXCOORD0) {
++            gles_glDisableVertexAttribArray(i);
++            s->enabled = 0;
++        }
++    }
++
++    #define IOS_UPLOAD_ATTRIB(IDX, PTR)                                        \
++        do {                                                                   \
++            vertexattrib_t *a = (PTR);                                         \
++            gles_glVertexAttribPointer((IDX), a->size, a->type, a->normalized, \
++                                       a->stride, a->pointer);                 \
++            if(!glstate->gleshard->vertexattrib[(IDX)].enabled)                \
++                gles_glEnableVertexAttribArray((IDX));                         \
++            glstate->gleshard->vertexattrib[(IDX)] = *a;                       \
++            glstate->gleshard->vertexattrib[(IDX)].enabled = 1;                \
++        } while(0)
++
++    IOS_UPLOAD_ATTRIB(ATT_VERTEX, v);
++    if(n->enabled)
++        IOS_UPLOAD_ATTRIB(ATT_NORMAL, n);
++    if(c->enabled)
++        IOS_UPLOAD_ATTRIB(ATT_COLOR, c);
++    if(t->enabled)
++        IOS_UPLOAD_ATTRIB(ATT_MULTITEXCOORD0, t);
++
++    #undef IOS_UPLOAD_ATTRIB
++
++    /* Client arrays require buffer 0; realize_textures() applies any texture
++     * binding that the state tracking deferred, exactly as the general path
++     * does with realize_textures(1). */
++    bindBuffer(GL_ARRAY_BUFFER, 0);
++    realize_bufferIndex();
++    realize_textures(1);
++
++    gles_glDrawElements(GL_TRIANGLES, count, GL_UNSIGNED_SHORT, sindices);
++    return 1;
++}
++#endif
++
+ static void glDrawElementsCommon(GLenum mode, GLint first, GLsizei count, GLuint len, const GLushort *sindices, const GLuint *iindices, int instancecount) {
+     if (glstate->raster.bm_drawing)
+         bitmap_flush();
+     DBG(printf("glDrawElementsCommon(%s, %d, %d, %d, %p, %p, %d)\n", PrintEnum(mode), first, count, len, sindices, iindices, instancecount);)
++#ifdef GL4ES_IOS_FASTPATH
++    if(ios_try_fast_draw_elements(mode, count, sindices, iindices, instancecount))
++        return;
++#endif
+     LOAD_GLES_FPE(glDrawElements);
+     LOAD_GLES_FPE(glDrawArrays);
+     LOAD_GLES_FPE(glNormalPointer);

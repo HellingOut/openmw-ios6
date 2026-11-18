@@ -1,23 +1,19 @@
 --- a/gl4es-master/src/gl/framebuffers.c
 +++ b/gl4es-master/src/gl/framebuffers.c
-@@ -1068,7 +1068,20 @@
-         return;
-     }
-      glrenderbuffer_t * rend = find_renderbuffer(renderbuffer);
-+    if(!rend && renderbuffer) {
-+        // Renderbuffers created before gl4es was initialised (notably the
-+        // UIKit/SDL window drawable colour buffer, which SDL_GL_SwapWindow
-+        // has to present) are not in gl4es' list.  Track them on demand
-+        // instead of rejecting the bind with GL_INVALID_OPERATION.
-+        khint_t k;
-+        int ret;
-+        k = kh_put(renderbufferlist_t, glstate->fbo.renderbufferlist, renderbuffer, &ret);
-+        if(ret) {
-+            rend = kh_value(glstate->fbo.renderbufferlist, k) = calloc(1, sizeof(glrenderbuffer_t));
-+            rend->renderbuffer = renderbuffer;
-+        }
+@@ -256,6 +256,16 @@
+     if(framebuffer==0)
+         framebuffer = glstate->fbo.mainfbo_fbo;
+ 
++#if defined(__APPLE__) && !defined(GL4ES_NO_IOS_FASTPATH)
++    /* Re-binding the already current framebuffer is a GL no-op.  OSG does it
++     * around every render pass; skipping the driver call also skips the
++     * gles_glGetError() round-trip below. */
++    if(fb && glstate->fbo.current_fb == fb) {
++        noerrorShim();
++        return;
 +    }
-     if(!rend || (renderbuffer && !rend->renderbuffer)) {
-         errorShim(GL_INVALID_OPERATION);
-         return;
-     }
++#endif
++
+     glstate->fbo.current_fb = fb;
+         
+     gles_glBindFramebuffer(target, framebuffer);

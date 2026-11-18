@@ -1,0 +1,54 @@
+--- a/gl4es-master/src/gl/texture.c
++++ b/gl4es-master/src/gl/texture.c
+@@ -31,6 +31,51 @@
+ #include <EGL/eglext.h>
+ #endif
+ 
++#if defined(__APPLE__) && !defined(GL4ES_NO_IOS_FASTPATH)
++/* iOS/PowerVR redundant texture-bind cache.
++ *
++ * glBindTexture() is one of the hottest entry points in the OSG/OpenMW frame:
++ * the scene graph re-binds the same texture object many times per frame.
++ * gl4es_glBindTexture() currently has to resolve the GL name through the
++ * texture khash before it can compare against glstate->texture.bound[].
++ *
++ * Remember the last resolved (context, unit, target, name, object) tuple so an
++ * identical consecutive call is answered by a handful of integer compares.
++ * The cached object is also compared against the live bound pointer, which
++ * makes deletion / re-creation of a name fall through to the normal path.
++ */
++typedef struct {
++    const void*  ctx;       /* owning glstate, guards context switches */
++    GLint        itarget;
++    GLuint       name;
++    gltexture_t *tex;
++} ios_texbind_cache_t;
++
++static ios_texbind_cache_t ios_texbind_cache[MAX_TEX][ENABLED_TEXTURE_LAST];
++
++GLboolean ios_texture_bind_is_redundant(GLuint unit, GLint itarget, GLuint name, gltexture_t *bound)
++{
++    const ios_texbind_cache_t *c;
++    if(unit >= MAX_TEX || itarget < 0 || itarget >= ENABLED_TEXTURE_LAST)
++        return GL_FALSE;
++    c = &ios_texbind_cache[unit][itarget];
++    return (c->ctx == (const void*)glstate && c->itarget == itarget
++            && c->name == name && c->tex == bound);
++}
++
++void ios_texture_bind_commit(GLuint unit, GLint itarget, GLuint name, gltexture_t *tex)
++{
++    ios_texbind_cache_t *c;
++    if(unit >= MAX_TEX || itarget < 0 || itarget >= ENABLED_TEXTURE_LAST)
++        return;
++    c = &ios_texbind_cache[unit][itarget];
++    c->ctx = (const void*)glstate;
++    c->itarget = itarget;
++    c->name = name;
++    c->tex = tex;
++}
++#endif
++
+ // expand non-power-of-two sizes
+ // TODO: what does this do to repeating textures?
+ int npot(int n) {

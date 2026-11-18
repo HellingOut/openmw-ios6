@@ -1,0 +1,79 @@
+--- a/gl4es-master/src/gl/texture_params.c
++++ b/gl4es-master/src/gl/texture_params.c
+@@ -16,6 +16,12 @@
+ #include "pixel.h"
+ #include "raster.h"
+ 
++#if defined(__APPLE__) && !defined(GL4ES_NO_IOS_FASTPATH)
++/* Implemented in texture.c: cheap redundant-bind bookkeeping. */
++extern GLboolean ios_texture_bind_is_redundant(GLuint unit, GLint itarget, GLuint name, gltexture_t *bound);
++extern void ios_texture_bind_commit(GLuint unit, GLint itarget, GLuint name, gltexture_t *tex);
++#endif
++
+ KHASH_MAP_IMPL_INT(tex, gltexture_t *);
+ 
+ //#define DEBUG
+@@ -187,9 +193,21 @@
+         gltexture_t *tex = NULL;
+         const GLuint itarget = what_target(target);
+ 
++#if defined(__APPLE__) && !defined(GL4ES_NO_IOS_FASTPATH)
++        /* Consecutive identical binds: no need to enter the khash lookup. */
++        if(ios_texture_bind_is_redundant(glstate->texture.active, itarget, texture,
++                glstate->texture.bound[glstate->texture.active][itarget])) {
++            noerrorShim();
++            return;
++        }
++#endif
+         tex = gl4es_getTexture(target, texture);
+-        if (glstate->texture.bound[glstate->texture.active][itarget] == tex)
++        if (glstate->texture.bound[glstate->texture.active][itarget] == tex) {
++#if defined(__APPLE__) && !defined(GL4ES_NO_IOS_FASTPATH)
++            ios_texture_bind_commit(glstate->texture.active, itarget, texture, tex);
++#endif
+             return;
++        }
+         
+         FLUSH_BEGINEND;
+         tex_changed = glstate->texture.active+1;
+@@ -217,6 +235,9 @@
+                     glstate->fpe_bound_changed = glstate->texture.active+1;
+                 break;
+         }
++#if defined(__APPLE__) && !defined(GL4ES_NO_IOS_FASTPATH)
++        ios_texture_bind_commit(glstate->texture.active, itarget, texture, tex);
++#endif
+     }
+ }
+ int is_mipmap_needed(glsampler_t* sampler)
+@@ -350,6 +371,30 @@
+     gl4es_glTexParameterfv(target, pname, &param);
+ }
+ void APIENTRY_GL4ES gl4es_glTexParameteri(GLenum target, GLenum pname, GLint param) {
++#if defined(__APPLE__) && !defined(GL4ES_NO_IOS_FASTPATH)
++    /* OSG re-applies the same filter/wrap state constantly.  Answer the
++     * redundant cases before entering the conversion + realization path. */
++    if(!glstate->list.pending && !glstate->list.active) {
++        const GLint itarget = what_target(target);
++        gltexture_t *texture = glstate->texture.bound[glstate->texture.active][itarget];
++        if(texture) {
++            switch(pname) {
++                case GL_TEXTURE_MIN_FILTER:
++                    if(texture->sampler.min_filter == (GLenum)param) { noerrorShim(); return; }
++                    break;
++                case GL_TEXTURE_MAG_FILTER:
++                    if(texture->sampler.mag_filter == (GLenum)param) { noerrorShim(); return; }
++                    break;
++                case GL_TEXTURE_WRAP_S:
++                    if(texture->sampler.wrap_s == (GLenum)param) { noerrorShim(); return; }
++                    break;
++                case GL_TEXTURE_WRAP_T:
++                    if(texture->sampler.wrap_t == (GLenum)param) { noerrorShim(); return; }
++                    break;
++            }
++        }
++    }
++#endif
+     GLfloat fparam = param;
+     gl4es_glTexParameterfv(target, pname, &fparam);
+ }
